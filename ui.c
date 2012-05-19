@@ -51,7 +51,7 @@ static int gShowBackButton = 0;
 //  #define CHAR_WIDTH 15
 // #define CHAR_HEIGHT 36
 //#else
-#define CHAR_WIDTH 15
+#define CHAR_WIDTH 10
 #define CHAR_HEIGHT 36
 //#endif
 
@@ -522,8 +522,8 @@ static int input_callback(int fd, short revents, void *data)
         if (old_x != 0)
             diff_x += touch_x - old_x;
 
-	 if(touch_y < (gr_fb_height() - gr_get_height(surface))) {
-            if(diff_x > (gr_fb_width() / 4)) {
+	 if (touch_y < (gr_fb_height() - gr_get_height(surface))) {
+            if (diff_x > (gr_fb_width() / 4)) {
                 slide_right = 1;
                 reset_gestures();
 	    } else if(diff_x < ((gr_fb_width() / 4) * -1)) {
@@ -540,7 +540,7 @@ static int input_callback(int fd, short revents, void *data)
         if (old_y != 0)
             diff_y += touch_y - old_y;
 
-   if(touch_y < (gr_fb_height() - gr_get_height(surface))) {
+   if (touch_y < (gr_fb_height() - gr_get_height(surface))) {
             if (diff_y > 25) {
                 ev.code = KEY_DOWN;
                 ev.type = EV_KEY;
