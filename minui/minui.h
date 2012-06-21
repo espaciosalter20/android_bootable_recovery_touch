@@ -18,6 +18,7 @@
 #define _MINUI_H_
 
 #include <stdbool.h>
+char RES_LOC[255];
 
 typedef void* gr_surface;
 typedef unsigned short gr_pixel;

@@ -197,7 +197,8 @@ int try_mount(const char* device, const char* mount_point, const char* fs_type, 
 
 int is_data_media() {
     Volume *data = volume_for_path("/data");
-    return data != NULL && strcmp(data->fs_type, "auto") == 0 || volume_for_path("/sdcard") == NULL;
+	Volume *sdcard = volume_for_path("/sdcard");
+    return data != NULL && strcmp(data->fs_type, "auto") == 0 && sdcard == NULL;
 }
 
 void setup_data_media() {

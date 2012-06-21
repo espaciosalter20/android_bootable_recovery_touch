@@ -1,3 +1,16 @@
+int show_power_options_menu();
+void show_safety_options_menu();
+void show_nandroid_advanced_backup_menu(const char* path);
+void show_help_menu();
+
+//razr led stuff
+void write_sys(const char* file, int value);
+int read_sys(const char* file);
+void set_led(const char* color, int value);
+int get_led(const char* color);
+void set_amoled(int value);
+int get_amoled();
+
 extern int signature_check_enabled;
 extern int script_assert_enabled;
 

@@ -16,8 +16,12 @@
 
 #ifndef RECOVERY_COMMON_H
 #define RECOVERY_COMMON_H
-
 #include <stdio.h>
+
+//configuration
+int touch_select;
+int touch_x_sen;
+int touch_y_sen;
 
 // Initialize the graphics system.
 void ui_init();
@@ -61,6 +65,15 @@ enum {
   BACKGROUND_ICON_CLOCKWORK,
   BACKGROUND_ICON_FIRMWARE_INSTALLING,
   BACKGROUND_ICON_FIRMWARE_ERROR,
+  BACKGROUND_ICON_ZIP,
+  BACKGROUND_ICON_BACKUP,
+  BACKGROUND_ICON_WIPE,
+  BACKGROUND_ICON_SAFETY,
+  BACKGROUND_ICON_POWER,
+  BACKGROUND_ICON_ADVANCE,
+  BACKGROUND_ICON_ABOUT,
+  BACKGROUND_ICON_USB,
+  BACKGROUND_ICON_MOUNT,
   NUM_BACKGROUND_ICONS
 };
 void ui_set_background(int icon);

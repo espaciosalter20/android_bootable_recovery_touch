@@ -16,3 +16,22 @@ int setprop_main(int argc, char *argv[])
 
     return 0;
 }
+
+int getprop_main(int argc, char *argv[])
+{
+	if(argc != 2) {
+		fprintf(stderr,"usage: getprop <key>\n");
+		return 1;
+    }
+	char value[PROPERTY_VALUE_MAX];
+	char *default_value;
+	if(argc > 2) {
+		default_value = argv[2];
+	} else {
+		default_value = "";
+	}
+
+    property_get(argv[1], value, default_value);
+    printf("%s\n", value);
+	return 0;
+}

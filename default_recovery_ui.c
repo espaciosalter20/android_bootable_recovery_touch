@@ -22,15 +22,17 @@
 
 char* MENU_HEADERS[] = { NULL };
 
-char* MENU_ITEMS[] = { "reboot system now",
-                       "install zip from sdcard",
-                       "wipe data/factory reset",
-                       "wipe cache partition",
-                       "backup and restore",
-                       "mounts and storage",
-                       "advanced",
-                       "power off",
-                       NULL };
+char* MENU_ITEMS[] = {
+						"T",
+						"Install zip package", //1
+						"Backup & restore",//2
+						"Mounts & format",//3
+						"Wipe & clean",//4
+						"System keeper",//5
+						"Power options",//6
+						"Advanced",//7
+						"About",//8
+						NULL };
 
 void device_ui_init(UIParameters* ui_parameters) {
 }
@@ -48,5 +50,9 @@ int device_perform_action(int which) {
 }
 
 int device_wipe_data() {
+    return 0;
+}
+
+int breaker() {
     return 0;
 }

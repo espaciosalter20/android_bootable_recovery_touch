@@ -1,4 +1,4 @@
-/*k
+/*
  * Copyright (C) 2007 The Android Open Source Project
  * Copyright (c) 2010, Code Aurora Forum. All rights reserved.
  *
@@ -220,9 +220,7 @@ get_args(int *argc, char ***argv) {
         strlcat(boot.recovery, (*argv)[i], sizeof(boot.recovery));
         strlcat(boot.recovery, "\n", sizeof(boot.recovery));
     }
-    if (device_flash_type() == MTD) {
-        set_bootloader_message(&boot);
-    }
+    set_bootloader_message(&boot);
 }
 
 void
@@ -284,12 +282,10 @@ finish_recovery(const char *send_intent) {
     copy_log_file(LAST_LOG_FILE, false);
     chmod(LAST_LOG_FILE, 0640);
 
-    if (device_flash_type() == MTD) {
-        // Reset to mormal system boot so recovery won't cycle indefinitely.
-        struct bootloader_message boot;
-        memset(&boot, 0, sizeof(boot));
-        set_bootloader_message(&boot);
-    }
+    // Reset to normal system boot so recovery won't cycle indefinitely.
+    struct bootloader_message boot;
+    memset(&boot, 0, sizeof(boot));
+    set_bootloader_message(&boot);
 
     // Remove the command file, so recovery won't repeat indefinitely.
     if (ensure_path_mounted(COMMAND_FILE) != 0 ||
@@ -312,7 +308,6 @@ erase_volume(const char *volume) {
         // log.
         tmplog_offset = 0;
     }
-
     return format_volume(volume);
 }
 
@@ -408,8 +403,7 @@ copy_sideloaded_package(const char* original_path) {
 
 static char**
 prepend_title(char** headers) {
-    char* title[] = { EXPAND(RECOVERY_VERSION),
-                      "",
+    char* title[] = { "", EXPAND(RECOVERY_VERSION),
                       NULL };
 
     // count the number of lines in our title, plus the
@@ -431,12 +425,11 @@ prepend_title(char** headers) {
 int
 get_menu_selection(char** headers, char** items, int menu_only,
                    int initial_selection) {
-    //printf("getting a menu selection\n");
     // throw away keys pressed previously, so user doesn't
     // accidentally trigger menu items.
     ui_clear_key_queue();
-
-    ++ui_menu_level;
+    
+	++ui_menu_level;
     int item_count = ui_start_menu(headers, items, initial_selection);
     int selected = initial_selection;
     int chosen_item = -1;
@@ -454,9 +447,9 @@ get_menu_selection(char** headers, char** items, int menu_only,
             if (ui_text_ever_visible()) {
                 continue;
             } else {
-                LOGI("timed out waiting for key input; rebooting.\n");
+                LOGI("timed out waiting for key input; Shutdown.\n");
                 ui_end_menu();
-                return ITEM_REBOOT;
+                return ITEM_POWEROFF;
             }
         }
 
@@ -478,7 +471,7 @@ get_menu_selection(char** headers, char** items, int menu_only,
                     chosen_item = selected;
                     if (ui_get_showing_back_button()) {
                         if (chosen_item == item_count-1) {
-                            --ui_menu_level;
+							--ui_menu_level;
                             chosen_item = GO_BACK;
                         }
                     }
@@ -486,28 +479,12 @@ get_menu_selection(char** headers, char** items, int menu_only,
                 case NO_ACTION:
                     break;
                 case GO_BACK:
-                    --ui_menu_level;
+					--ui_menu_level;
                     chosen_item = GO_BACK;
                     break;
             }
         } else if (!menu_only) {
             chosen_item = action;
-        }
-
-        
-        if (abs(selected - old_selected) > 1) {
-            wrap_count++;
-            if (wrap_count == 300) {
-                wrap_count = 0;
-                if (ui_get_showing_back_button()) {
-                    ui_print("Back menu button disabled.\n");
-                    ui_set_showing_back_button(0);
-                }
-                else {
-                    ui_print("Back menu button enabled.\n");
-                    ui_set_showing_back_button(1);
-                }
-            }
         }
     }
 
@@ -524,9 +501,8 @@ static int
 update_directory(const char* path, const char* unmount_when_done) {
     ensure_path_mounted(path);
 
-    const char* MENU_HEADERS[] = { "Choose a package to install:",
+    const char* MENU_HEADERS[] = { """Choose a package to install:",
                                    path,
-                                   "",
                                    NULL };
     DIR* d;
     struct dirent* de;
@@ -650,16 +626,9 @@ update_directory(const char* path, const char* unmount_when_done) {
 static void
 wipe_data(int confirm) {
     if (confirm) {
-        static char** title_headers = NULL;
-
-        if (title_headers == NULL) {
-            char* headers[] = { "Confirm wipe of all user data?",
-                                "  THIS CAN NOT BE UNDONE.",
-                                "",
-                                NULL };
-            title_headers = prepend_title((const char**)headers);
-        }
-
+        char* headers[] = { "Confirm wipe of all user data?",
+                            "  THIS CAN NOT BE UNDONE.",
+                             NULL };
         char* items[] = { " No",
                           " No",
                           " No",
@@ -673,7 +642,7 @@ wipe_data(int confirm) {
                           " No",
                           NULL };
 
-        int chosen_item = get_menu_selection(title_headers, items, 1, 0);
+        int chosen_item = get_menu_selection(headers, items, 1, 0);
         if (chosen_item != 7) {
             return;
         }
@@ -686,20 +655,79 @@ wipe_data(int confirm) {
     if (has_datadata()) {
         erase_volume("/datadata");
     }
-    erase_volume("/sd-ext");
     erase_volume("/sdcard/.android_secure");
     ui_print("Data wipe complete.\n");
 }
 
+int show_wipe_options_menu()
+{
+	static char* items[] = { "Wipe data & cache (Factory Reset)",
+                             "Wipe cache",
+                             "Wipe dalvik cache",
+                             "Wipe battery stats",
+                              NULL
+	};
+    static char* headers[] = {  "","Wipe options", NULL };
+    for (;;)
+    {
+		gCurrentIcon = BACKGROUND_ICON_WIPE;
+        int chosen_item = get_menu_selection(headers, items, 0, 0);
+        switch (chosen_item)
+        {
+            case 0:
+                wipe_data(ui_text_visible());
+                if (!ui_text_visible()) return 1;
+				return 0;
+            case 1:
+				if (confirm_selection("Confirm wipe?", "Yes - Wipe Cache"))
+                {
+                    ui_print("\n-- Wiping cache...\n");
+                    erase_volume("/cache");
+                    ui_print("Cache wipe complete.\n");
+                    if (!ui_text_visible()) return 1;
+                }
+                return 0;
+            case 2:
+				if (0 != ensure_path_mounted("/data"))
+                    break;
+                ensure_path_mounted("/cache");
+                if (confirm_selection( "Confirm wipe?", "Yes - Wipe Dalvik Cache")) {
+                    __system("rm -r /data/dalvik-cache");
+                    ui_print("Dalvik Cache wiped.\n");
+                }
+                ensure_path_unmounted("/data");
+				return 0;
+			case 3:
+				wipe_battery_stats();
+				return 0;
+            default:
+				return 0;
+        }
+    }
+}
+
+int alternate_recovery() {
+	if (NULL != strstr(recovery_mode, "stock")) {
+		property_set("lense.recovery.mode", "second");
+		__system("/preinstall/bootmenu/script/recovery_second.sh");
+	} else {
+		property_set("lense.recovery.mode", "stock");
+		__system("/preinstall/bootmenu/script/recovery_stock.sh");
+	}
+	return 4;
+}
+
 static void
 prompt_and_wait() {
+
     char** headers = prepend_title((const char**)MENU_HEADERS);
 
     for (;;) {
         finish_recovery(NULL);
         ui_reset_progress();
-
+        
         ui_menu_level = -1;
+		gCurrentIcon = BACKGROUND_ICON_CLOCKWORK;
         allow_display_toggle = 1;
         int chosen_item = get_menu_selection(headers, MENU_ITEMS, 0, 0);
         allow_display_toggle = 0;
@@ -711,25 +739,23 @@ prompt_and_wait() {
 
         int status;
         switch (chosen_item) {
-            case ITEM_REBOOT:
-                poweroff=0;
-                return;
-
-            case ITEM_WIPE_DATA:
-                wipe_data(ui_text_visible());
-                if (!ui_text_visible()) return;
+            case ITEM_POWER:
+				poweroff=show_power_options_menu();
+				if (poweroff > 3) {
+					break;
+				} else {
+                	return;
+				}
+            case ITEM_SAFETY:
+				show_safety_options_menu();
                 break;
 
-            case ITEM_WIPE_CACHE:
-                if (confirm_selection("Confirm wipe?", "Yes - Wipe Cache"))
-                {
-                    ui_print("\n-- Wiping cache...\n");
-                    erase_volume("/cache");
-                    ui_print("Cache wipe complete.\n");
-                    if (!ui_text_visible()) return;
-                }
-                break;
-
+            case ITEM_WIPE:
+                if(show_wipe_options_menu() == 1) {
+					return;
+				} else {
+	                break;
+				}
             case ITEM_APPLY_SDCARD:
                 show_install_update_menu();
                 break;
@@ -745,7 +771,16 @@ prompt_and_wait() {
             case ITEM_ADVANCED:
                 show_advanced_menu();
                 break;
-                
+
+			case ITEM_HELP:
+                show_help_menu();
+                break;
+
+			case ITEM_TOGGLE:
+                poweroff = alternate_recovery();
+                return;
+            
+			//hidden    
             case ITEM_POWEROFF:
                 poweroff = 1;
                 return;
@@ -756,6 +791,45 @@ prompt_and_wait() {
 static void
 print_property(const char *key, const char *name, void *cookie) {
     printf("%s=%s\n", key, name);
+}
+
+void configuration(const char* file) {
+	//default value
+	touch_y_sen = 70;
+	touch_x_sen = 400;
+	touch_select = 0;
+	int brightness = 100;
+	int keypad_light = 1;
+	char theme[40] = "default";
+
+	FILE* fp = fopen(file, "r");
+	if (fp != NULL) {
+		char item[40];
+		char value[40];
+		static char buffer[2048];
+		while(fgets(buffer, sizeof(buffer), fp) != (char *)NULL) {
+			if(buffer[0] == '#') continue;
+			if(sscanf(buffer, "%39[^=]=%39[^\n]", item, value) == 2) {
+				if(!strcmp(item, "brightness")) {
+					brightness = atoi(value);
+				} else if(!strcmp(item, "keypad_light")) {
+					keypad_light = atoi(value);
+				} else if(!strcmp(item, "touch_select")) {
+					touch_select = atoi(value);
+				} else if(!strcmp(item, "touch_x")) {
+					touch_x_sen = atoi(value);
+				} else if(!strcmp(item, "touch_y")) {
+					touch_y_sen = atoi(value);
+				} else if(!strcmp(item, "theme")) {
+					strncpy(theme, value, 39);
+				}
+			}
+		}
+		fclose(fp);
+	}
+	sprintf(RES_LOC,"/preinstall/bootmenu/themes/%s/%%s.png",theme);
+	set_led("button-backlight",keypad_light);
+	set_amoled(brightness);
 }
 
 int
@@ -792,9 +866,32 @@ main(int argc, char **argv) {
         }
         if (strstr(argv[0], "setprop"))
             return setprop_main(argc, argv);
+        if (strstr(argv[0], "getprop"))
+            return getprop_main(argc, argv);
 		return busybox_driver(argc, argv);
 	}
-    __system("/sbin/postrecoveryboot.sh");
+
+	char prop[3];
+	property_get("lense.recovery.done", prop, "0");
+	
+	if (NULL != strstr(prop, "0")) {
+		sleep(1);
+		property_set("lense.recovery.done", "1");
+		property_set("lense.recovery.mode", "stock");
+		property_set("sys.usb.config", "mass_storage,adb");		
+		set_led("green",0);
+	}
+
+	configuration("/preinstall/bootmenu/config/recovery.prop");
+	property_get("lense.recovery.mode", recovery_mode, "stock");
+
+	if (!strcmp(recovery_mode, "stock")) {
+		MENU_ITEMS[0] = "Toggle second system recovery";
+	} else {
+		MENU_ITEMS[0] = "Toggle stock system recovery";
+	}
+
+    __system("/preinstall/bootmenu/script/recovery_postboot.sh");
 
     int is_user_initiated_recovery = 0;
     time_t start = time(NULL);
@@ -806,7 +903,7 @@ main(int argc, char **argv) {
 
     device_ui_init(&ui_parameters);
     ui_init();
-    //ui_print(EXPAND(RECOVERY_VERSION)"\n");
+    printf("Project lense recovery is based on CWM-based v5.5.0.4\n");
     load_volume_table();
     process_volumes();
     LOGI("Processing arguments.\n");
@@ -920,13 +1017,27 @@ main(int argc, char **argv) {
     finish_recovery(send_intent);
 
     sync();
-    if(!poweroff) {
-        ui_print("Rebooting...\n");
-        android_reboot(ANDROID_RB_RESTART, 0, 0);
-    }
-    else {
-        ui_print("Shutting down...\n");
-        android_reboot(ANDROID_RB_POWEROFF, 0, 0);
+	switch (poweroff) {
+		case 0:
+        	ui_print("Rebooting...\n");
+        	android_reboot(ANDROID_RB_RESTART, 0, 0);
+			break;
+		case 1:
+	        ui_print("Shutting down...\n");
+    	    android_reboot(ANDROID_RB_POWEROFF, 0, 0);
+			break;
+		case 2:
+			ui_print("Rebooting to stock recovery...\n");
+			android_reboot(ANDROID_RB_RESTART2, 0, "recovery");
+			break;
+		case 3:
+			ui_print("Rebooting to bootloader...\n");
+        	android_reboot(ANDROID_RB_RESTART2, 0, "bootloader");
+			break;
+		case 4:
+			ui_print("Restarting recovery..\n");
+			__system("/sbin/recovery &");
+			break;
     }
     return EXIT_SUCCESS;
 }
