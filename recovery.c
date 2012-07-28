@@ -31,7 +31,6 @@
 #include <dirent.h>
 #include <sys/stat.h>
 
-#include "bootloader.h"
 #include "common.h"
 #include "cutils/properties.h"
 #include "cutils/android_reboot.h"
@@ -42,7 +41,6 @@
 #include "recovery_ui.h"
 
 #include "extendedcommands.h"
-#include "flashutils/flashutils.h"
 
 static const struct option OPTIONS[] = {
   { "send_intent", required_argument, NULL, 's' },
@@ -159,39 +157,6 @@ check_and_fclose(FILE *fp, const char *name) {
 //   - the contents of COMMAND_FILE (one per line)
 static void
 get_args(int *argc, char ***argv) {
-    struct bootloader_message boot;
-    memset(&boot, 0, sizeof(boot));
-    if (device_flash_type() == MTD || device_flash_type() == MMC) {
-        get_bootloader_message(&boot);  // this may fail, leaving a zeroed structure
-    }
-
-    if (boot.command[0] != 0 && boot.command[0] != 255) {
-        LOGI("Boot command: %.*s\n", sizeof(boot.command), boot.command);
-    }
-
-    if (boot.status[0] != 0 && boot.status[0] != 255) {
-        LOGI("Boot status: %.*s\n", sizeof(boot.status), boot.status);
-    }
-
-    struct stat file_info;
-
-    // --- if arguments weren't supplied, look in the bootloader control block
-    if (*argc <= 1 && 0 != stat("/tmp/.ignorebootmessage", &file_info)) {
-        boot.recovery[sizeof(boot.recovery) - 1] = '\0';  // Ensure termination
-        const char *arg = strtok(boot.recovery, "\n");
-        if (arg != NULL && !strcmp(arg, "recovery")) {
-            *argv = (char **) malloc(sizeof(char *) * MAX_ARGS);
-            (*argv)[0] = strdup(arg);
-            for (*argc = 1; *argc < MAX_ARGS; ++*argc) {
-                if ((arg = strtok(NULL, "\n")) == NULL) break;
-                (*argv)[*argc] = strdup(arg);
-            }
-            LOGI("Got arguments from boot message\n");
-        } else if (boot.recovery[0] != 0 && boot.recovery[0] != 255) {
-            LOGE("Bad boot message\n\"%.20s\"\n", boot.recovery);
-        }
-    }
-
     // --- if that doesn't work, try the command file
     if (*argc <= 1) {
         FILE *fp = fopen_path(COMMAND_FILE, "r");
@@ -210,26 +175,10 @@ get_args(int *argc, char ***argv) {
             LOGI("Got arguments from %s\n", COMMAND_FILE);
         }
     }
-
-    // --> write the arguments we have back into the bootloader control block
-    // always boot into recovery after this (until finish_recovery() is called)
-    strlcpy(boot.command, "boot-recovery", sizeof(boot.command));
-    strlcpy(boot.recovery, "recovery\n", sizeof(boot.recovery));
-    int i;
-    for (i = 1; i < *argc; ++i) {
-        strlcat(boot.recovery, (*argv)[i], sizeof(boot.recovery));
-        strlcat(boot.recovery, "\n", sizeof(boot.recovery));
-    }
-    set_bootloader_message(&boot);
 }
 
 void
 set_sdcard_update_bootloader_message() {
-    struct bootloader_message boot;
-    memset(&boot, 0, sizeof(boot));
-    strlcpy(boot.command, "boot-recovery", sizeof(boot.command));
-    strlcpy(boot.recovery, "recovery\n", sizeof(boot.recovery));
-    set_bootloader_message(&boot);
 }
 
 // How much of the temp log we have copied to the copy in cache.
@@ -283,9 +232,9 @@ finish_recovery(const char *send_intent) {
     chmod(LAST_LOG_FILE, 0640);
 
     // Reset to normal system boot so recovery won't cycle indefinitely.
-    struct bootloader_message boot;
-    memset(&boot, 0, sizeof(boot));
-    set_bootloader_message(&boot);
+    //struct bootloader_message boot;
+    //memset(&boot, 0, sizeof(boot));
+    //set_bootloader_message(&boot);
 
     // Remove the command file, so recovery won't repeat indefinitely.
     if (ensure_path_mounted(COMMAND_FILE) != 0 ||
@@ -655,7 +604,7 @@ wipe_data(int confirm) {
     if (has_datadata()) {
         erase_volume("/datadata");
     }
-    erase_volume("/sdcard/.android_secure");
+    erase_volume("/emmc/.android_secure");
     ui_print("Data wipe complete.\n");
 }
 
@@ -676,6 +625,7 @@ int show_wipe_options_menu()
         {
             case 0:
                 wipe_data(ui_text_visible());
+				ensure_path_mounted("/cache");
                 if (!ui_text_visible()) return 1;
 				return 0;
             case 1:
@@ -683,6 +633,7 @@ int show_wipe_options_menu()
                 {
                     ui_print("\n-- Wiping cache...\n");
                     erase_volume("/cache");
+					ensure_path_mounted("/cache");
                     ui_print("Cache wipe complete.\n");
                     if (!ui_text_visible()) return 1;
                 }
@@ -690,7 +641,6 @@ int show_wipe_options_menu()
             case 2:
 				if (0 != ensure_path_mounted("/data"))
                     break;
-                ensure_path_mounted("/cache");
                 if (confirm_selection( "Confirm wipe?", "Yes - Wipe Dalvik Cache")) {
                     __system("rm -r /data/dalvik-cache");
                     ui_print("Dalvik Cache wiped.\n");
@@ -706,20 +656,28 @@ int show_wipe_options_menu()
     }
 }
 
-int alternate_recovery() {
-	if (NULL != strstr(recovery_mode, "stock")) {
-		property_set("lense.recovery.mode", "second");
-		__system("/preinstall/bootmenu/script/recovery_second.sh");
+void check_integrity() {
+	ensure_path_unmounted("/system");
+	ui_print("Checking system integrity.. ");
+   	if (0 != __system("/preinstall/bootmenu/script/check_hijack.sh")) {
+		ui_print("bad! :(\n\n");
+   		ui_print("hijack version mismatched!\n");
+		ui_print("Bootmenu will not run in next boot\n\n");
+		ui_print("If this is a mistake, reinstall via\n");
+		ui_print(" System keeper menu\n");
+		if (!confirm_selection("Confirm reboot?", "Yes - Good Bye BootMenu")) {
+			property_set("lense.recovery.mode", "stock");
+			__system("/preinstall/bootmenu/script/recovery_stock.sh");
+			poweroff = 6;
+		}
 	} else {
-		property_set("lense.recovery.mode", "stock");
-		__system("/preinstall/bootmenu/script/recovery_stock.sh");
+		ui_print("good! :)\n\n");
 	}
-	return 4;
+	ensure_path_unmounted("/system");
 }
 
 static void
 prompt_and_wait() {
-
     char** headers = prepend_title((const char**)MENU_HEADERS);
 
     for (;;) {
@@ -737,15 +695,18 @@ prompt_and_wait() {
         // statement below.
         chosen_item = device_perform_action(chosen_item);
 
-        int status;
+
         switch (chosen_item) {
             case ITEM_POWER:
+			{
 				poweroff=show_power_options_menu();
-				if (poweroff > 3) {
+				if (poweroff > 5) {
 					break;
 				} else {
-                	return;
+					check_integrity();
 				}
+				return;
+			}
             case ITEM_SAFETY:
 				show_safety_options_menu();
                 break;
@@ -777,9 +738,18 @@ prompt_and_wait() {
                 break;
 
 			case ITEM_TOGGLE:
-                poweroff = alternate_recovery();
-                return;
-            
+				{
+					if (NULL != strstr(recovery_mode, "stock")) {
+						property_set("lense.recovery.mode", "second");
+						__system("/preinstall/bootmenu/script/recovery_second.sh");
+					} else {
+						property_set("lense.recovery.mode", "stock");
+						__system("/preinstall/bootmenu/script/recovery_stock.sh");
+					}
+					poweroff = 6;
+	                return;
+				}
+
 			//hidden    
             case ITEM_POWEROFF:
                 poweroff = 1;
@@ -801,6 +771,7 @@ void configuration(const char* file) {
 	int brightness = 100;
 	int keypad_light = 1;
 	char theme[40] = "default";
+	sprintf(def_location, "%s", "/emmc");
 
 	FILE* fp = fopen(file, "r");
 	if (fp != NULL) {
@@ -836,20 +807,10 @@ int
 main(int argc, char **argv) {
 	if (strcmp(basename(argv[0]), "recovery") != 0)
 	{
-	    if (strstr(argv[0], "flash_image") != NULL)
-	        return flash_image_main(argc, argv);
 	    if (strstr(argv[0], "volume") != NULL)
 	        return volume_main(argc, argv);
 	    if (strstr(argv[0], "edify") != NULL)
 	        return edify_main(argc, argv);
-	    if (strstr(argv[0], "dump_image") != NULL)
-	        return dump_image_main(argc, argv);
-	    if (strstr(argv[0], "erase_image") != NULL)
-	        return erase_image_main(argc, argv);
-	    if (strstr(argv[0], "mkyaffs2image") != NULL)
-	        return mkyaffs2image_main(argc, argv);
-	    if (strstr(argv[0], "unyaffs") != NULL)
-	        return unyaffs_main(argc, argv);
         if (strstr(argv[0], "nandroid"))
             return nandroid_main(argc, argv);
         if (strstr(argv[0], "reboot"))
@@ -881,10 +842,10 @@ main(int argc, char **argv) {
 		property_set("sys.usb.config", "mass_storage,adb");		
 		set_led("green",0);
 	}
-
+	
 	configuration("/preinstall/bootmenu/config/recovery.prop");
-	property_get("lense.recovery.mode", recovery_mode, "stock");
 
+	property_get("lense.recovery.mode", recovery_mode, "stock");
 	if (!strcmp(recovery_mode, "stock")) {
 		MENU_ITEMS[0] = "Toggle second system recovery";
 	} else {
@@ -903,9 +864,17 @@ main(int argc, char **argv) {
 
     device_ui_init(&ui_parameters);
     ui_init();
-    printf("Project lense recovery is based on CWM-based v5.5.0.4\n");
+    printf("This recovery is based on CWM-Recovery v5.5.0.4\n");
+	battlevel = cpcap_batt_percent();
+	printf("Battery voltage : %d mv\n", battlevel);
     load_volume_table();
     process_volumes();
+
+	if (ensure_path_mounted("/emmc") != 0) {
+		sprintf(def_location, "%s", "/sdcard");
+	}
+	printf("Default file location : %s\n", def_location);
+
     LOGI("Processing arguments.\n");
     get_args(&argc, &argv);
 
@@ -997,6 +966,7 @@ main(int argc, char **argv) {
             else {
                 handle_failure(ret);
             }
+			check_integrity();
         } else {
             LOGI("Skipping execution of extendedcommand, file not found...\n");
         }
@@ -1011,12 +981,13 @@ main(int argc, char **argv) {
     }
 
     // If there is a radio image pending, reboot now to install it.
-    maybe_install_firmware_update(send_intent);
+    //maybe_install_firmware_update(send_intent);
 
     // Otherwise, get ready to boot the main system...
     finish_recovery(send_intent);
 
     sync();
+	sleep(1);
 	switch (poweroff) {
 		case 0:
         	ui_print("Rebooting...\n");
@@ -1027,14 +998,24 @@ main(int argc, char **argv) {
     	    android_reboot(ANDROID_RB_POWEROFF, 0, 0);
 			break;
 		case 2:
+        	ui_print("Rebooting to 1st system...\n");
+			write_sys("/preinstall/.stock_mode",1);
+        	android_reboot(ANDROID_RB_RESTART, 0, 0);
+			break;
+		case 3:
+        	ui_print("Rebooting to 2nd system...\n");
+			write_sys("/preinstall/.second_mode",1);
+        	android_reboot(ANDROID_RB_RESTART, 0, 0);
+			break;
+		case 4:
 			ui_print("Rebooting to stock recovery...\n");
 			android_reboot(ANDROID_RB_RESTART2, 0, "recovery");
 			break;
-		case 3:
+		case 5:
 			ui_print("Rebooting to bootloader...\n");
         	android_reboot(ANDROID_RB_RESTART2, 0, "bootloader");
 			break;
-		case 4:
+		case 6:
 			ui_print("Restarting recovery..\n");
 			__system("/sbin/recovery &");
 			break;

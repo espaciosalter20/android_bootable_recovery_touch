@@ -22,13 +22,13 @@
 #include <unistd.h>
 #include <ctype.h>
 
-#include "mtdutils/mtdutils.h"
+//#include "mtdutils/mtdutils.h"
 #include "mounts.h"
 #include "roots.h"
 #include "common.h"
-#include "make_ext4fs.h"
+//#include "make_ext4fs.h"
 
-#include "flashutils/flashutils.h"
+//#include "flashutils/flashutils.h"
 #include "extendedcommands.h"
 
 int num_volumes;
@@ -250,18 +250,7 @@ int ensure_path_mounted_at_mount_point(const char* path, const char* mount_point
 
     mkdir(mount_point, 0755);  // in case it doesn't already exist
 
-    if (strcmp(v->fs_type, "yaffs2") == 0) {
-        // mount an MTD partition as a YAFFS2 filesystem.
-        mtd_scan_partitions();
-        const MtdPartition* partition;
-        partition = mtd_find_partition_by_name(v->device);
-        if (partition == NULL) {
-            LOGE("failed to find \"%s\" partition to mount at \"%s\"\n",
-                 v->device, mount_point);
-            return -1;
-        }
-        return mtd_mount_partition(partition, mount_point, v->fs_type, 0);
-    } else if (strcmp(v->fs_type, "ext4") == 0 ||
+	if (strcmp(v->fs_type, "ext4") == 0 ||
                strcmp(v->fs_type, "ext3") == 0 ||
                strcmp(v->fs_type, "rfs") == 0 ||
                strcmp(v->fs_type, "vfat") == 0) {
@@ -358,6 +347,7 @@ int format_volume(const char* volume) {
         return -1;
     }
 
+/*
     if (strcmp(v->fs_type, "yaffs2") == 0 || strcmp(v->fs_type, "mtd") == 0) {
         mtd_scan_partitions();
         const MtdPartition* partition = mtd_find_partition_by_name(v->device);
@@ -389,7 +379,7 @@ int format_volume(const char* volume) {
         }
         return 0;
     }
-
+*/
 #if 0
     LOGE("format_volume: fs_type \"%s\" unsupported\n", v->fs_type);
     return -1;

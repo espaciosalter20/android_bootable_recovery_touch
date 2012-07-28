@@ -103,4 +103,7 @@ void
 set_sdcard_update_bootloader_message();
 
 char recovery_mode[10];
+char def_location[10];
+int battlevel;
+int cpcap_batt_percent(void);
 #endif

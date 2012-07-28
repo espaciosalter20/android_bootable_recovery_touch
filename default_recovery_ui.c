@@ -23,13 +23,13 @@
 char* MENU_HEADERS[] = { NULL };
 
 char* MENU_ITEMS[] = {
-						"T",
+						"Toogle alt system recovery",
 						"Install zip package", //1
 						"Backup & restore",//2
 						"Mounts & format",//3
 						"Wipe & clean",//4
 						"System keeper",//5
-						"Power options",//6
+						"Reboot options",//6
 						"Advanced",//7
 						"About",//8
 						NULL };

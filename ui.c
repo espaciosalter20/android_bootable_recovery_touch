@@ -27,6 +27,7 @@
 #include <sys/types.h>
 #include <time.h>
 #include <unistd.h>
+#include <linux/spi/cpcap.h>
 
 #include "common.h"
 #include <cutils/android_reboot.h>
@@ -168,30 +169,12 @@ static void draw_background_locked(int icon)
     }
 }
 
-// Return true if USB is connected.
-static int usb_connected() {
-    int fd = open("/sys/class/android_usb/android0/state", O_RDONLY);
-    if (fd < 0) {
-        printf("failed to open /sys/class/android_usb/android0/state: %s\n",
-               strerror(errno));
-        return 0;
-    }
-
-    char buf;
-    /* USB is connected if android_usb state is CONNECTED or CONFIGURED */
-    int connected = (read(fd, &buf, 1) == 1) && (buf == 'C');
-    if (close(fd) < 0) {
-        printf("failed to close /sys/class/android_usb/android0/state: %s\n",
-               strerror(errno));
-    }
-    return connected;
-}
-
 // Draw the progress bar (if any) on the screen.  Does not flip pages.
 // Should only be called with gUpdateMutex locked.
 static void draw_progress_locked()
 {
     if (gCurrentIcon == BACKGROUND_ICON_INSTALLING) {
+		gInstallingFrame = (gInstallingFrame + 1) % ui_parameters.installing_frames;
         draw_install_overlay_locked(gInstallingFrame);
     }
 
@@ -233,17 +216,20 @@ static void draw_text_line(int row, const char* t, int space) {
   }
 }
 
-//#define MENU_TEXT_COLOR 255, 160, 49, 255
-//#define MENU_TEXT_COLOR 0, 191, 255, 255
-#define MENU_TEXT_COLOR 85, 170, 56, 255 //green
-//#define NORMAL_TEXT_COLOR 200, 200, 200, 255
-#define NORMAL_TEXT_COLOR 200, 200, 200, 255 //white
-#define HEADER_TEXT_COLOR 255, 255, 0, 255 //yellow
+#define GREEN 85, 170, 56, 255
+#define WHITE 200, 200, 200, 255
+#define YELLOW 255, 255, 0, 255
+#define YELLOW2 220, 220, 0, 255
+#define BLACK 0, 0, 0, 255
+#define GREY 100, 100, 100, 255
+#define GREY2 85, 85, 85, 255
+#define GREY3 70, 70, 70, 255
 
 // Redraw everything on the screen.  Does not flip pages.
 // Should only be called with gUpdateMutex locked.
 static void draw_screen_locked(void)
 {
+	bool fm = false;
     if (!ui_has_initialized) return;
 
 	draw_background_locked(gCurrentIcon);
@@ -258,31 +244,44 @@ static void draw_screen_locked(void)
         if (show_menu) {
 			gr_color(0, 0, 0, 160);
 	        gr_fill(0, 0, gr_fb_width(), gr_fb_height());
-            gr_color(HEADER_TEXT_COLOR);
+            gr_color(YELLOW);
+
             for (i = 0; i < menu_top; ++i) {
 				draw_text_line(i+1, menu[i],CHAR_HEIGHT);
 				row+=2;
 			}
-						
-            gr_color(MENU_TEXT_COLOR);
-            gr_fill(0, ((menu_top + menu_sel - menu_show_start) * CHAR_SPACE)+6,
-                    gr_fb_width(), ((menu_top + menu_sel - menu_show_start + 1)*CHAR_SPACE+CHAR_HEIGHT)-6);
+
+			if (strncasecmp(menu[1], "choose", 6) == 0) { fm = true; }
+			//highlight
+            gr_color(GREEN);
+            gr_fill(0, ((menu_top + menu_sel - menu_show_start) * CHAR_SPACE)+6, gr_fb_width(), ((menu_top + menu_sel - menu_show_start + 1)*CHAR_SPACE+CHAR_HEIGHT)-6);
 
             if (menu_items - menu_show_start + menu_top >= max_menu_rows)
                 j = max_menu_rows - menu_top;
             else
                 j = menu_items - menu_show_start;
 
-            gr_color(MENU_TEXT_COLOR);
             for (i = menu_show_start + menu_top; i < (menu_show_start + menu_top + j); ++i) {
                 if (i == menu_top + menu_sel) {
-                    gr_color(255, 255, 255, 255);
+                    gr_color(WHITE);
                     draw_text_line(i - menu_show_start , menu[i],CHAR_SPACE);
-                    gr_color(MENU_TEXT_COLOR);
                 } else {
-                    gr_color(MENU_TEXT_COLOR);
+                    gr_color(GREEN);
                     draw_text_line(i - menu_show_start, menu[i],CHAR_SPACE);
                 }
+				if ((fm == true) && (strncasecmp(menu[i], " +++", 4) != 0) && (strlen(menu[i]) > 3)) {
+					if (strncasecmp(menu[i] + (strlen(menu[i])-4), ".zip", 4) == 0) {
+						gr_color(WHITE);
+						gr_fill(10, (row/2)*CHAR_SPACE+CHAR_HEIGHT+3, 25, (row/2)*CHAR_SPACE+CHAR_HEIGHT+22);
+						gr_color(BLACK);
+						gr_fill(10, (row/2)*CHAR_SPACE+CHAR_HEIGHT+3, 12, (row/2)*CHAR_SPACE+CHAR_HEIGHT+5);
+					} else {
+						gr_color(YELLOW2);	
+						gr_fill(5, (row/2)*CHAR_SPACE+CHAR_HEIGHT+3, 30, (row/2)*CHAR_SPACE+CHAR_HEIGHT+22);
+						gr_color(GREY);
+						gr_fill(15, (row/2)*CHAR_SPACE+CHAR_HEIGHT+3, 30, (row/2)*CHAR_SPACE+CHAR_HEIGHT+5);
+					}
+				}
                 row +=2;
                 if (row/2 >= max_menu_rows) {
                     break;
@@ -292,11 +291,12 @@ static void draw_screen_locked(void)
                 offset = 1;
 
 			//Hline
+			gr_color(GREEN);
 			gr_fill(0, (menu_top*CHAR_SPACE)+4, gr_fb_width(), (menu_top*CHAR_SPACE)+6);
             gr_fill(0, (row/2-offset)*CHAR_SPACE+CHAR_HEIGHT-6, gr_fb_width(), (row/2-offset)*CHAR_SPACE+CHAR_HEIGHT-4);
         }
 
-        gr_color(NORMAL_TEXT_COLOR);
+        gr_color(WHITE);
         int cur_row = text_row;
         int available_rows = total_rows - row - 1;
         int start_row = row + 1;
@@ -309,30 +309,22 @@ static void draw_screen_locked(void)
         for (r = 0; r < (available_rows < MAX_ROWS ? available_rows : MAX_ROWS) ; r++) {
             draw_text_line(start_row + r, text[(cur_row + r) % MAX_ROWS],CHAR_HEIGHT);
         }
+
+		gr_color(BLACK);
+		gr_fill(0, 0, gr_fb_width(), 24);
+
+		//Text
+		char clock[MAX_COLS];
+		gr_color(GREEN);
+		sprintf(clock,"TOUCH:  | MODE:%s | BATT:%d mV", recovery_mode, battlevel);
+		draw_text_line(0, clock,CHAR_HEIGHT);
+
+		//Touch icon
+		if (touch_select) gr_color(0, 255, 0, 255);
+		else gr_color(255, 0, 0, 255);
+		gr_fill(90, 2,110, 22);
+
     }
-
-	gr_color(0, 0, 0, 255);
-	gr_fill(0, 0, gr_fb_width(), 24);
-
-	//Clock
-	char clock[MAX_COLS];
-	gr_color(MENU_TEXT_COLOR);
-
-	sprintf(clock,"TOUCH:  RECOVERY MODE: %s system", recovery_mode);
-	draw_text_line(0, clock,CHAR_HEIGHT);
-
-	//USB icon
-	if (touch_select) {
-		gr_color(0, 255, 0, 255);
-	} else {
-		gr_color(255, 0, 0, 255);
-	}
-	gr_fill(90, 2,110, 22);
-
-	//Batt
-	//batt level /sys/class/power_supply/battery/capacity
-	//charge status		/sys/class/power_supply/battery/status
-	//wall status cat /sys/class/power_supply/ac/online
 }
 
 // Redraw everything on the screen and flip the screen (make it visible).
@@ -372,7 +364,7 @@ static void *progress_thread(void *cookie)
         // skip this if we have a text overlay (too expensive to update)
         if (gCurrentIcon == BACKGROUND_ICON_INSTALLING &&
             ui_parameters.installing_frames > 0 &&
-            !show_menu) {
+            !show_text) {
             gInstallingFrame =
                 (gInstallingFrame + 1) % ui_parameters.installing_frames;
             redraw = 1;
@@ -380,7 +372,7 @@ static void *progress_thread(void *cookie)
 
         // update the progress bar animation, if active
         // skip this if we have a text overlay (too expensive to update)
-        if (gProgressBarType == PROGRESSBAR_TYPE_INDETERMINATE && !show_menu) {
+        if (gProgressBarType == PROGRESSBAR_TYPE_INDETERMINATE && !show_text) {
             redraw = 1;
         }
 
@@ -798,13 +790,12 @@ int ui_start_menu(char** headers, char** items, int initial_selection) {
         menu_top = i;
         for (; i < MENU_MAX_ROWS; i++) {
             if (items[i-menu_top] == NULL) break;
-            strcpy(menu[i], MENU_ITEM_HEADER);
+           	strcpy(menu[i], MENU_ITEM_HEADER);
             strncpy(menu[i] + MENU_ITEM_HEADER_LENGTH, items[i-menu_top], MENU_MAX_COLS - 1 - MENU_ITEM_HEADER_LENGTH);
             menu[i][MENU_MAX_COLS-1] = '\0';
         }
 
         if (gShowBackButton && ui_menu_level > 0) {
-						  //"Unroot (leave a protected backup)",
             strcpy(menu[i], " +++++++++++  Go Back  +++++++++++");
             ++i;
         }
@@ -886,6 +877,25 @@ void ui_show_text(int visible)
     pthread_mutex_unlock(&gUpdateMutex);
 }
 
+// Return true if USB is connected.
+static int usb_connected() {
+    int fd = open("/sys/class/android_usb/android0/state", O_RDONLY);
+    if (fd < 0) {
+        printf("failed to open /sys/class/android_usb/android0/state: %s\n",
+               strerror(errno));
+        return 0;
+    }
+
+    char buf;
+    /* USB is connected if android_usb state is CONNECTED or CONFIGURED */
+    int connected = (read(fd, &buf, 1) == 1) && (buf == 'C');
+    if (close(fd) < 0) {
+        printf("failed to close /sys/class/android_usb/android0/state: %s\n",
+               strerror(errno));
+    }
+    return connected;
+}
+
 int ui_wait_key()
 {
     pthread_mutex_lock(&key_queue_mutex);
@@ -913,6 +923,8 @@ int ui_wait_key()
         memcpy(&key_queue[0], &key_queue[1], sizeof(int) * --key_queue_len);
     }
     pthread_mutex_unlock(&key_queue_mutex);
+	//update battery stat on select
+	if ((key == KEY_END) || (key == KEY_SEARCH)) battlevel = cpcap_batt_percent();
     return key;
 }
 
@@ -938,4 +950,38 @@ void ui_set_showing_back_button(int showBackButton) {
 
 int ui_get_showing_back_button() {
     return gShowBackButton;
+}
+
+
+/*
+ * codes from batt_cpcap.c tpruvot@CyanogenDefy/android_external_bootmenu
+ * 
+ * Read battery voltage. an idea of what battery level is.
+ *
+ */
+int cpcap_batt_percent(void) {
+	int cpcap_fd = -1;
+    struct cpcap_adc_us_request req_us;
+    int ret, volt_batt;
+    float range, mini;
+
+    cpcap_fd = open("/dev/cpcap_batt", O_RDONLY | O_NONBLOCK);
+    if (cpcap_fd <= 0) {
+        return -1;
+    }
+	
+	memset(&req_us, 0, sizeof(struct cpcap_adc_us_request));
+    req_us.timing = CPCAP_ADC_TIMING_IMM;
+    req_us.format = CPCAP_ADC_FORMAT_CONVERTED;
+    req_us.type = CPCAP_ADC_TYPE_BANK_0;
+
+	ret = ioctl(cpcap_fd, CPCAP_IOCTL_BATT_ATOD_SYNC, &req_us);
+    if (ret != 0) {
+        close(cpcap_fd);
+		return -1;
+    }
+
+    volt_batt = req_us.result[CPCAP_ADC_BATTP];
+	close(cpcap_fd);
+    return volt_batt;
 }

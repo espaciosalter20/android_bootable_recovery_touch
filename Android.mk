@@ -1,13 +1,12 @@
 LOCAL_PATH := $(call my-dir)
 include $(CLEAR_VARS)
-LOCAL_MODULE_PATH := $(EXECUTABLES)
+LOCAL_MODULE_PATH := $(EXECUTABLES)/binary
 commands_recovery_local_path := $(LOCAL_PATH)
 # LOCAL_CPP_EXTENSION := .c
 #    ../../system/core/toolbox/reboot.c \
 
 LOCAL_SRC_FILES := \
     recovery.c \
-    bootloader.c \
     install.c \
     roots.c \
     ui.c \
@@ -15,7 +14,6 @@ LOCAL_SRC_FILES := \
     extendedcommands.c \
     ../../system/core/toolbox/reboot.c \
     nandroid.c \
-    firmware.c \
     edifyscripting.c \
     setprop.c \
     default_recovery_ui.c \
@@ -60,9 +58,9 @@ $(foreach board_define,$(BOARD_RECOVERY_DEFINES), \
 
 LOCAL_STATIC_LIBRARIES :=
 
-LOCAL_CFLAGS += -DUSE_EXT4
-LOCAL_C_INCLUDES += system/extras/ext4_utils
-LOCAL_STATIC_LIBRARIES += libext4_utils libz
+#LOCAL_CFLAGS += -DUSE_EXT4
+#LOCAL_C_INCLUDES += system/extras/ext4_utils
+#LOCAL_STATIC_LIBRARIES += libext4_utils libz
 
 # This binary is in the recovery ramdisk, which is otherwise a copy of root.
 # It gets copied there in config/Makefile.  LOCAL_MODULE_TAGS suppresses
@@ -77,22 +75,22 @@ else
   LOCAL_SRC_FILES += $(BOARD_CUSTOM_RECOVERY_KEYMAPPING)
 endif
 
-LOCAL_STATIC_LIBRARIES += libext4_utils libz
+#LOCAL_STATIC_LIBRARIES += libext4_utils libz
 LOCAL_STATIC_LIBRARIES += libminzip libunz libmincrypt
 
-LOCAL_STATIC_LIBRARIES += libedify libbusybox libmkyaffs2image libunyaffs liberase_image libdump_image libflash_image
+LOCAL_STATIC_LIBRARIES += libedify libbusybox
 
-LOCAL_STATIC_LIBRARIES += libcrecovery libflashutils libmtdutils libmmcutils libbmlutils 
+LOCAL_STATIC_LIBRARIES += libcrecovery libmmcutils
 
-ifeq ($(BOARD_USES_BML_OVER_MTD),true)
-LOCAL_STATIC_LIBRARIES += libbml_over_mtd
-endif
+#ifeq ($(BOARD_USES_BML_OVER_MTD),true)
+#LOCAL_STATIC_LIBRARIES += libbml_over_mtd
+#endif
 
 LOCAL_STATIC_LIBRARIES += libminui libpixelflinger_static libpng libcutils
 LOCAL_STATIC_LIBRARIES += libstdc++ libc
 #LOCAL_STATIC_LIBRARIES += libm libclearsilverregex libuclibcrpc
 
-LOCAL_C_INCLUDES += system/extras/ext4_utils
+#LOCAL_C_INCLUDES += system/extras/ext4_utils
 
 include $(BUILD_EXECUTABLE)
 
@@ -152,13 +150,13 @@ LOCAL_STATIC_LIBRARIES := libmincrypt libcutils libstdc++ libc
 
 include $(BUILD_EXECUTABLE)
 
-include $(commands_recovery_local_path)/bmlutils/Android.mk
-include $(commands_recovery_local_path)/flashutils/Android.mk
+#include $(commands_recovery_local_path)/bmlutils/Android.mk
+#include $(commands_recovery_local_path)/flashutils/Android.mk
 include $(commands_recovery_local_path)/libcrecovery/Android.mk
 include $(commands_recovery_local_path)/minui/Android.mk
 include $(commands_recovery_local_path)/minelf/Android.mk
 include $(commands_recovery_local_path)/minzip/Android.mk
-include $(commands_recovery_local_path)/mtdutils/Android.mk
+#include $(commands_recovery_local_path)/mtdutils/Android.mk
 include $(commands_recovery_local_path)/mmcutils/Android.mk
 include $(commands_recovery_local_path)/tools/Android.mk
 include $(commands_recovery_local_path)/edify/Android.mk

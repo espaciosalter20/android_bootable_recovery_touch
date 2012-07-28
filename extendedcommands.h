@@ -2,7 +2,8 @@ int show_power_options_menu();
 void show_safety_options_menu();
 void show_nandroid_advanced_backup_menu(const char* path);
 void show_help_menu();
-
+void show_path_chooser(int zip, const char* location, const char* title);
+void get_title(int zip, const char* location, const char* title);
 //razr led stuff
 void write_sys(const char* file, int value);
 int read_sys(const char* file);
