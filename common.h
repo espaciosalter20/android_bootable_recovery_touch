@@ -40,6 +40,7 @@ void ui_clear_key_queue();
 void ui_print(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 void ui_printlogtail(int nb_lines);
 
+void ui_reset_text();
 void ui_reset_text_col();
 void ui_set_show_text(int value);
 

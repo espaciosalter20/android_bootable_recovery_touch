@@ -269,17 +269,24 @@ static void draw_screen_locked(void)
                     gr_color(GREEN);
                     draw_text_line(i - menu_show_start, menu[i],CHAR_SPACE);
                 }
-				if ((fm == true) && (strncasecmp(menu[i], " +++", 4) != 0) && (strlen(menu[i]) > 3)) {
-					if (strncasecmp(menu[i] + (strlen(menu[i])-4), ".zip", 4) == 0) {
-						gr_color(WHITE);
-						gr_fill(10, (row/2)*CHAR_SPACE+CHAR_HEIGHT+3, 25, (row/2)*CHAR_SPACE+CHAR_HEIGHT+22);
-						gr_color(BLACK);
-						gr_fill(10, (row/2)*CHAR_SPACE+CHAR_HEIGHT+3, 12, (row/2)*CHAR_SPACE+CHAR_HEIGHT+5);
-					} else {
-						gr_color(YELLOW2);	
-						gr_fill(5, (row/2)*CHAR_SPACE+CHAR_HEIGHT+3, 30, (row/2)*CHAR_SPACE+CHAR_HEIGHT+22);
-						gr_color(GREY);
-						gr_fill(15, (row/2)*CHAR_SPACE+CHAR_HEIGHT+3, 30, (row/2)*CHAR_SPACE+CHAR_HEIGHT+5);
+				if (fm == true) {
+					if ((strncasecmp(menu[i], " +++", 4) != 0) && (strlen(menu[i]) > 3)) {
+						if (strncasecmp(menu[i] + (strlen(menu[i])-4), ".zip", 4) == 0) {
+							gr_color(WHITE);
+							gr_fill(10, (row/2)*CHAR_SPACE+CHAR_HEIGHT+3, 25, (row/2)*CHAR_SPACE+CHAR_HEIGHT+22);
+							gr_color(BLACK);
+							gr_fill(10, (row/2)*CHAR_SPACE+CHAR_HEIGHT+3, 12, (row/2)*CHAR_SPACE+CHAR_HEIGHT+5);
+						} else if (strncasecmp(menu[i] + (strlen(menu[i])-4), ".img", 4) == 0) {
+							gr_color(GREY);
+							gr_fill(10, (row/2)*CHAR_SPACE+CHAR_HEIGHT+3, 25, (row/2)*CHAR_SPACE+CHAR_HEIGHT+22);
+							gr_color(BLACK);
+							gr_fill(10, (row/2)*CHAR_SPACE+CHAR_HEIGHT+3, 12, (row/2)*CHAR_SPACE+CHAR_HEIGHT+5);
+						} else {
+							gr_color(YELLOW2);	
+							gr_fill(5, (row/2)*CHAR_SPACE+CHAR_HEIGHT+3, 30, (row/2)*CHAR_SPACE+CHAR_HEIGHT+22);
+							gr_color(GREY);
+							gr_fill(15, (row/2)*CHAR_SPACE+CHAR_HEIGHT+3, 30, (row/2)*CHAR_SPACE+CHAR_HEIGHT+5);
+						}
 					}
 				}
                 row +=2;
@@ -579,7 +586,7 @@ void ui_init(void)
 
     text_col = text_row = 0;
     text_rows = gr_fb_height() / CHAR_HEIGHT;
-    max_menu_rows = (text_rows - MIN_LOG_ROWS)/2;
+    max_menu_rows = ((text_rows - MIN_LOG_ROWS)/2)-1;
     if (max_menu_rows > MENU_MAX_ROWS)
         max_menu_rows = MENU_MAX_ROWS;
     if (text_rows > MAX_ROWS) text_rows = MAX_ROWS;
@@ -766,6 +773,15 @@ void ui_printlogtail(int nb_lines) {
         fclose(f);
     }
     ui_log_stdout=1;
+}
+
+void ui_reset_text() {
+    pthread_mutex_lock(&gUpdateMutex);
+	text_row = 0;
+    text_col = 0;
+	text_top = 0;
+	update_screen_locked();
+    pthread_mutex_unlock(&gUpdateMutex);
 }
 
 void ui_reset_text_col()

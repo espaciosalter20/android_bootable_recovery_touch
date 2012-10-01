@@ -236,6 +236,82 @@ void toggle_script_asserts()
     ui_print("Script Asserts: %s\n", script_assert_enabled ? "Enabled" : "Disabled");
 }
 
+/// v 0.2.7
+void write_sys_txt(const char* file, const char* value) {
+	FILE* f = fopen(file, "w");
+	if (f != NULL) {
+    	fprintf(f, "%s", value);
+    	fclose(f);
+  	}
+}
+
+void show_choose_radio_menu(const char *mount_point) {
+    if (ensure_path_mounted(mount_point) != 0) {
+        LOGE ("Can't mount %s\n", mount_point);
+        return;
+    }
+
+    static char* headers[] = {  "","Choose an image to flash", NULL };
+    char* file = choose_file_menu(mount_point, ".img", headers);
+    if (file == NULL)
+        return;
+    static char* confirm_install  = "Confirm flash?";
+    static char confirm[PATH_MAX];
+    sprintf(confirm, "Yes - Install %s", basename(file));
+    if (confirm_selection(confirm_install, confirm)) {
+		property_set("firmware.path", file);
+		write_sys_txt("/sys/bus/usb/devices/usb1/power/control", "on");
+		write_sys_txt("/sys/bus/usb/devices/usb2/power/control", "on");
+		
+        ui_print("\n-- Flashing: %s\n", file);
+		int status = install_package("/preinstall/bootmenu/script/radio.zip");
+
+		ui_reset_progress();
+		write_sys_txt("/sys/bus/usb/devices/usb1/power/control", "auto");
+		write_sys_txt("/sys/bus/usb/devices/usb2/power/control", "auto");
+		property_set("firmware.path", "");
+
+  		if (status != INSTALL_SUCCESS) {
+        	ui_print("Flashing aborted.\n");
+			static char* headers[] = {  "","Flashing aborted.",NULL };
+    		static char* list[] = { NULL };
+			ui_set_background(BACKGROUND_ICON_FIRMWARE_ERROR);
+        	int chosen_item = get_menu_selection(headers, list, 0, 0);
+   	    	if (chosen_item == GO_BACK || chosen_item == 0) {
+   	    	    return;
+			}
+   		}
+    	ui_print("\nFlashing %s completed.\n", basename(file));
+	}
+}
+
+void show_install_radio_menu() {
+	char* headers[] = {  "","Flash radio firmware", "", "internal storage", NULL  };
+	char* menu[] = {  "Choose bp.img,lte.img or cefs.img", "Change firmware file location", NULL };
+
+	char location[PATH_MAX] = "";
+	char title[PATH_MAX] = "";	
+	get_title(1,location,title);
+    for (;;) {
+		headers[3] = title;
+		gCurrentIcon = BACKGROUND_ICON_FIRMWARE_INSTALLING;
+        int chosen_item = get_menu_selection(headers, menu, 0, 0);
+        switch (chosen_item) {
+            case 0:
+                show_choose_radio_menu(location);
+                break;
+            case 1:
+				show_path_chooser(1,location,title);
+				break;
+            default:
+                return;
+        }
+
+    }
+}
+
+///
+
 int install_zip(const char* packagefilepath)
 {
     ui_print("\n-- Installing: %s\n", packagefilepath);
@@ -254,7 +330,7 @@ int install_zip(const char* packagefilepath)
    	        return 1;
 		}
    	}
-    ui_print("\nInstall from sdcard complete.\n");
+    ui_print("\nInstall from zip complete.\n");
    	return 0;
 }
 //                              "choose zip from internal sdcard",
@@ -267,12 +343,12 @@ char* INSTALL_MENU_ITEMS[] = {  "Install a zip package",
 
 void show_install_update_menu()
 {
-    static char* headers[] = {  "","Apply update from a zip file","internal storage", NULL  };
+    static char* headers[] = {  "","Apply update from a zip file","","internal storage", NULL  };
  	char location[PATH_MAX] = "";
 	char title[PATH_MAX] = "";	
 	get_title(1,location,title);
     for (;;) {
-		headers[2] = title;
+		headers[3] = title;
 		gCurrentIcon = BACKGROUND_ICON_ZIP;
         int chosen_item = get_menu_selection(headers, INSTALL_MENU_ITEMS, 0, 0);
         switch (chosen_item) {
@@ -779,9 +855,9 @@ int format_unknown_device(const char *device, const char* path, const char *fs_t
     }
 
     static char tmp[PATH_MAX];
-	LOGI("Format mode = Erase (rm -rf %s/*)\n", path);
-	ui_print("Skipping format...\n");
-	ui_print("Unset all immutable flag...\n");
+	LOGI("Format mode : erase (rm -rf %s/*)\n", path);
+	ui_print("Format mode : erase (rm -rf)...\n");
+	ui_print("Remove immutable flag...\n");
 	sprintf(tmp, "chattr -i -R %s/", path);
 	__system(tmp);
 	ui_print("Erasing %s...\n\n", basename(path));
@@ -797,7 +873,10 @@ int format_unknown_device(const char *device, const char* path, const char *fs_t
         __system(tmp);
     }
 
-    ensure_path_unmounted(path);
+	if (strcmp(path, "/cache") == 0) return 0;
+	if (strcmp(path, "/preinstall") == 0) return 0;
+
+   	ensure_path_unmounted(path);
     return 0;
 }
 
@@ -1085,21 +1164,23 @@ void show_path_chooser(int zip, const char* location, const char* title) {
 	}
 	if (ensure_path_mounted(location) != 0) {
 		sprintf(location, "%s", def_location);
-		sprintf(title,"   Location : %s",plist[1]);		
+		sprintf(title,"File location : %s",plist[1]);		
 	    ui_print("Fallback to %s\n", plist[1]);
     } else {
-		sprintf(title,"   Location : %s",plist[chosen_item]);
+		if ((chosen_item >= 0) && (chosen_item <= 5)) {
+			sprintf(title,"File location : %s",plist[chosen_item]);
+			if (zip == 1) sprintf(location + strlen(location), "/");
+		}
 	}
-	if (zip == 1) sprintf(location + strlen(location), "/");
 }
 
 void get_title(int zip, const char* location, const char* title) {
 	sprintf(location, "%s", def_location);
 	if (zip == 1) sprintf(location + strlen(location), "/");
 	if (!strcmp(def_location, "/emmc")) {
-		sprintf(title, "   Location : Internal storage");
+		sprintf(title, "File location : Internal storage");
 	} else {
-		sprintf(title, "   Location : Micro SD");
+		sprintf(title, "File location : Micro SD");
 	}
 }
 
@@ -1113,7 +1194,7 @@ void show_nandroid_menu()
                             "Change backup location",
                             NULL
     };
-	static char* titles[] = {"","Nandroid backup & restore","internal storage",NULL};
+	static char* titles[] = {"","Nandroid backup & restore", "", "internal storage",NULL};
 	static char* confirm  = "Backup these partition.Confirm?";
     
 	char location[PATH_MAX] = "";
@@ -1121,7 +1202,7 @@ void show_nandroid_menu()
 	get_title(0,location,title);
 
     for (;;) {
-		titles[2] = title;
+		titles[3] = title;
 		gCurrentIcon = BACKGROUND_ICON_BACKUP;
 		int chosen_item = get_menu_selection(titles, list, 0, 0);
     	switch (chosen_item) {

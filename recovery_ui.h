@@ -76,14 +76,15 @@ int device_wipe_data();
 #define ITEM_TOGGLE			 0
 #define ITEM_APPLY_EXT       1
 #define ITEM_APPLY_SDCARD    1  // historical synonym for ITEM_APPLY_EXT
-#define ITEM_APPLY_CACHE     2
-#define ITEM_NANDROID        2
-#define ITEM_PARTITION       3
-#define ITEM_WIPE		     4
-#define ITEM_SAFETY		     5
-#define ITEM_POWER           6
-#define ITEM_ADVANCED        7
-#define ITEM_HELP			 8
+#define ITEM_RADIO			 2  // historical synonym for ITEM_APPLY_EXT
+#define ITEM_APPLY_CACHE     3
+#define ITEM_NANDROID        3
+#define ITEM_PARTITION       4
+#define ITEM_WIPE		     5
+#define ITEM_SAFETY		     6
+#define ITEM_POWER           7
+#define ITEM_ADVANCED        8
+#define ITEM_HELP			 9
 #define ITEM_POWEROFF        20
 
 // Header text to display above the main menu.

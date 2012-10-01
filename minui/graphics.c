@@ -152,6 +152,7 @@ static int get_framebuffer(GGLSurface *fb)
     fb->format = PIXEL_FORMAT;
     memset(fb->data, 0, vi.yres * fi.line_length);
 
+/*
     fprintf(stderr,"framebuffer debug\n");
     fprintf(stderr," vi.xres = %d\n", vi.xres);
     fprintf(stderr," vi.yres = %d\n", vi.yres);
@@ -160,7 +161,7 @@ static int get_framebuffer(GGLSurface *fb)
     fprintf(stderr," vi.xoff = %d\n", vi.xoffset);
     fprintf(stderr," vi.yoff = %d\n", vi.yoffset);
     fprintf(stderr, " vi.bits_per_pixel = %d\n", vi.bits_per_pixel);
-
+*/
     return fd;
 }
 

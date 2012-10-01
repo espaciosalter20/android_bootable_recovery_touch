@@ -148,6 +148,10 @@ Value* FormatFn(const char* name, State* state, int argc, Expr* argv[]) {
         return StringValue(strdup(""));
     }
     
+	if (strcmp(path, "/cache") == 0) {
+		ensure_path_mounted("/cache");
+	}
+
     if (strcmp(path, "/data") == 0 && has_datadata()) {
         ui_print("Formatting /datadata...\n", path);
         if (0 != format_volume("/datadata")) {
@@ -180,6 +184,16 @@ Value* BackupFn(const char* name, State* state, int argc, Expr* argv[]) {
     return StringValue(strdup(path));
 }
 
+Value* DalvikFn(const char* name, State* state, int argc, Expr* argv[]) {
+	ensure_path_mounted("/cache");
+	ensure_path_mounted("/data");
+	__system("rm -r /data/dalvik-cache");
+	__system("rm -r /cache/dalvik-cache");
+    ui_print("Dalvik Cache wiped.\n");
+    ensure_path_unmounted("/data");
+    return StringValue(strdup(""));
+}
+
 Value* RestoreFn(const char* name, State* state, int argc, Expr* argv[]) {
     if (argc < 1) {
         return ErrorAbort(state, "%s() expects at least 1 arg", name);
@@ -194,26 +208,29 @@ Value* RestoreFn(const char* name, State* state, int argc, Expr* argv[]) {
     args2[argc] = NULL;
     
     char* path = strdup(args2[0]);
-    int restoreboot = 1;
-    int restoresystem = 1;
-    int restoredata = 1;
-    int restorecache = 1;
-    int restoresdext = 1;
+    int restorepds = 0;
+    int restoresystem = 0;
+    int restoredata = 0;
+    int restorecache = 0;
+    int restorewebtop = 0;
+	int restorepreinstall = 0;
     int i;
     for (i = 1; i < argc; i++)
     {
         if (args2[i] == NULL)
             continue;
-        if (strcmp(args2[i], "noboot") == 0)
-            restoreboot = 0;
-        else if (strcmp(args2[i], "nosystem") == 0)
-            restoresystem = 0;
-        else if (strcmp(args2[i], "nodata") == 0)
-            restoredata = 0;
-        else if (strcmp(args2[i], "nocache") == 0)
-            restorecache = 0;
-        else if (strcmp(args2[i], "nosd-ext") == 0)
-            restoresdext = 0;
+        if (strcmp(args2[i], "pds") == 0)
+            restorepds = 1;
+        else if (strcmp(args2[i], "system") == 0)
+            restoresystem = 1;
+        else if (strcmp(args2[i], "data") == 0)
+            restoredata = 1;
+        else if (strcmp(args2[i], "cache") == 0)
+            restorecache = 1;
+        else if (strcmp(args2[i], "webtop") == 0)
+            restorewebtop = 1;
+		else if (strcmp(args2[i], "preinstall") == 0)
+            restorepreinstall = 1;
     }
     
     for (i = 0; i < argc; ++i) {
@@ -222,7 +239,7 @@ Value* RestoreFn(const char* name, State* state, int argc, Expr* argv[]) {
     free(args);
     free(args2);
 
-    if (0 != nandroid_restore(path, restoreboot, restoresystem, restoredata, restorecache, restoresdext, 0)) {
+    if (0 != nandroid_restore(path, restorepds, restoresystem, restoredata, restorecache, restorewebtop, restorepreinstall)) {
         free(path);
         return StringValue(strdup(""));
     }
@@ -270,6 +287,7 @@ void RegisterRecoveryHooks() {
     RegisterFunction("backup_rom", BackupFn);
     RegisterFunction("restore_rom", RestoreFn);
     RegisterFunction("install_zip", InstallZipFn);
+    RegisterFunction("dalvik", DalvikFn);
 }
 
 static int hasInitializedEdify = 0;
@@ -318,13 +336,12 @@ int run_and_remove_extendedcommand()
     sprintf(tmp, "cp %s /tmp/%s", EXTENDEDCOMMAND_SCRIPT, basename(EXTENDEDCOMMAND_SCRIPT));
     __system(tmp);
     remove(EXTENDEDCOMMAND_SCRIPT);
-    int i = 0;
-    for (i = 10; i > 0; i--) {
-        if (ensure_path_mounted("/emmc") == 0) {
-            ui_print("Internal storage mounted (%d try)...\n",10-i);
-            break;
-        }
-        sleep(1);
+
+    if (ensure_path_mounted("/emmc") == 0) {
+    	ui_print("Internal storage mounted...\n");
+    }
+    if (ensure_path_mounted("/sdcard") == 0) {
+    	ui_print("External sdcard mounted...\n");
     }
 
     sprintf(tmp, "/tmp/%s", basename(EXTENDEDCOMMAND_SCRIPT));

@@ -215,6 +215,7 @@ copy_log_file(const char* destination, int append) {
 // this function is idempotent: call it as many times as you like.
 static void
 finish_recovery(const char *send_intent) {
+	ensure_path_mounted("/cache");
     // By this point, we're ready to return to the main system...
     if (send_intent != NULL) {
         FILE *fp = fopen_path(INTENT_FILE, "w");
@@ -638,11 +639,13 @@ int show_wipe_options_menu()
                     if (!ui_text_visible()) return 1;
                 }
                 return 0;
-            case 2:
+            case 2:				
+				ensure_path_mounted("/cache");
 				if (0 != ensure_path_mounted("/data"))
                     break;
                 if (confirm_selection( "Confirm wipe?", "Yes - Wipe Dalvik Cache")) {
                     __system("rm -r /data/dalvik-cache");
+					__system("rm -r /cache/dalvik-cache");
                     ui_print("Dalvik Cache wiped.\n");
                 }
                 ensure_path_unmounted("/data");
@@ -666,8 +669,7 @@ void check_integrity() {
 		ui_print("If this is a mistake, reinstall via\n");
 		ui_print(" System keeper menu\n");
 		if (!confirm_selection("Confirm reboot?", "Yes - Good Bye BootMenu")) {
-			property_set("lense.recovery.mode", "stock");
-			__system("/preinstall/bootmenu/script/recovery_stock.sh");
+			sprintf(recovery_mode,"%s","second");
 			poweroff = 6;
 		}
 	} else {
@@ -702,8 +704,6 @@ prompt_and_wait() {
 				poweroff=show_power_options_menu();
 				if (poweroff > 5) {
 					break;
-				} else {
-					check_integrity();
 				}
 				return;
 			}
@@ -738,19 +738,14 @@ prompt_and_wait() {
                 break;
 
 			case ITEM_TOGGLE:
-				{
-					if (NULL != strstr(recovery_mode, "stock")) {
-						property_set("lense.recovery.mode", "second");
-						__system("/preinstall/bootmenu/script/recovery_second.sh");
-					} else {
-						property_set("lense.recovery.mode", "stock");
-						__system("/preinstall/bootmenu/script/recovery_stock.sh");
-					}
-					poweroff = 6;
-	                return;
-				}
+				poweroff = 6;
+	            return;
 
-			//hidden    
+			case ITEM_RADIO:
+				show_install_radio_menu();
+				break;
+			
+            //hidden    
             case ITEM_POWEROFF:
                 poweroff = 1;
                 return;
@@ -832,15 +827,26 @@ main(int argc, char **argv) {
 		return busybox_driver(argc, argv);
 	}
 
-	char prop[3];
-	property_get("lense.recovery.done", prop, "0");
-	
-	if (NULL != strstr(prop, "0")) {
-		sleep(1);
-		property_set("lense.recovery.done", "1");
+	sleep(1);
+
+    int is_user_initiated_recovery = 0;
+    time_t start = time(NULL);
+
+    // If these fail, there's not really anywhere to complain...
+    freopen(TEMPORARY_LOG_FILE, "a", stdout); setbuf(stdout, NULL);
+    freopen(TEMPORARY_LOG_FILE, "a", stderr); setbuf(stderr, NULL);
+    printf("Starting recovery on %s", ctime(&start));
+
+	__system("/preinstall/bootmenu/script/recovery_restart.sh");
+
+    if (strstr(argv[1], "second")) {
+		LOGI("Recovery mode : second.\n");
+		__system("cp /preinstall/bootmenu/config/second.recovery.fstab /etc/recovery.fstab");
+		property_set("lense.recovery.mode", "second");
+	} else {
+		LOGI("Recovery mode : mode.\n");
+		__system("/sbin/cp /preinstall/bootmenu/config/stock.recovery.fstab /etc/recovery.fstab");
 		property_set("lense.recovery.mode", "stock");
-		property_set("sys.usb.config", "mass_storage,adb");		
-		set_led("green",0);
 	}
 	
 	configuration("/preinstall/bootmenu/config/recovery.prop");
@@ -854,16 +860,34 @@ main(int argc, char **argv) {
 
     __system("/preinstall/bootmenu/script/recovery_postboot.sh");
 
-    int is_user_initiated_recovery = 0;
-    time_t start = time(NULL);
-
-    // If these fail, there's not really anywhere to complain...
-    freopen(TEMPORARY_LOG_FILE, "a", stdout); setbuf(stdout, NULL);
-    freopen(TEMPORARY_LOG_FILE, "a", stderr); setbuf(stderr, NULL);
-    printf("Starting recovery on %s", ctime(&start));
-
     device_ui_init(&ui_parameters);
     ui_init();
+
+	char prop[3];
+	property_get("lense.recovery.done", prop, "0");
+	
+	if (NULL != strstr(prop, "0")) {
+		property_set("lense.recovery.done", "1");
+		set_led("red",0);
+		set_led("green",1);
+
+		ui_show_indeterminate_progress();
+		ui_set_show_text(1);
+		ui_print("Give time for init to finish..\n");
+		ui_print("Delay 3s..\n");
+    	sleep(3);
+		ui_reset_text();
+		ui_print("\n");
+		ui_print("\n");
+		ui_reset_text();
+		ui_set_show_text(0);
+		ui_reset_progress();
+		property_set("sys.usb.config", "mass_storage,adb");
+		__system("/sbin/umount -l /system");
+		__system("/sbin/umount -l /data");
+		set_led("green",0);
+	}
+
     printf("This recovery is based on CWM-Recovery v5.5.0.4\n");
 	battlevel = cpcap_batt_percent();
 	printf("Battery voltage : %d mv\n", battlevel);
@@ -875,8 +899,8 @@ main(int argc, char **argv) {
 	}
 	printf("Default file location : %s\n", def_location);
 
-    LOGI("Processing arguments.\n");
-    get_args(&argc, &argv);
+    //LOGI("Processing arguments.\n");
+    //get_args(&argc, &argv);
 
     int previous_runs = 0;
     const char *send_intent = NULL;
@@ -966,7 +990,6 @@ main(int argc, char **argv) {
             else {
                 handle_failure(ret);
             }
-			check_integrity();
         } else {
             LOGI("Skipping execution of extendedcommand, file not found...\n");
         }
@@ -986,8 +1009,12 @@ main(int argc, char **argv) {
     // Otherwise, get ready to boot the main system...
     finish_recovery(send_intent);
 
+	if (poweroff != 6) {
+		ui_set_show_text(1);
+		check_integrity();
+		sleep(2);
+	}
     sync();
-	sleep(1);
 	switch (poweroff) {
 		case 0:
         	ui_print("Rebooting...\n");
@@ -1017,7 +1044,13 @@ main(int argc, char **argv) {
 			break;
 		case 6:
 			ui_print("Restarting recovery..\n");
-			__system("/sbin/recovery &");
+			__system("/sbin/umount -l /system");
+			__system("/sbin/umount -l /data");
+			if (NULL != strstr(recovery_mode, "stock")) {
+				__system("/sbin/recovery second &");
+			} else {
+				__system("/sbin/recovery stock &");
+			}
 			break;
     }
     return EXIT_SUCCESS;

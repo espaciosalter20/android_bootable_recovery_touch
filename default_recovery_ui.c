@@ -25,13 +25,14 @@ char* MENU_HEADERS[] = { NULL };
 char* MENU_ITEMS[] = {
 						"Toogle alt system recovery",
 						"Install zip package", //1
-						"Backup & restore",//2
-						"Mounts & format",//3
-						"Wipe & clean",//4
-						"System keeper",//5
-						"Reboot options",//6
-						"Advanced",//7
-						"About",//8
+						"Flash radio firmware", //2
+						"Backup & restore",//3
+						"Mounts & format",//4
+						"Wipe & clean",//5
+						"System keeper",//6
+						"Reboot options",//7
+						"Advanced",//8
+						"About",//9
 						NULL };
 
 void device_ui_init(UIParameters* ui_parameters) {
