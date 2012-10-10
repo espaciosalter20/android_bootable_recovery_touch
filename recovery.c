@@ -31,6 +31,7 @@
 #include <dirent.h>
 #include <sys/stat.h>
 
+//#include "bootloader.h"
 #include "common.h"
 #include "cutils/properties.h"
 #include "cutils/android_reboot.h"
@@ -41,6 +42,8 @@
 #include "recovery_ui.h"
 
 #include "extendedcommands.h"
+//#include "flashutils/flashutils.h"
+#include "dedupe/dedupe.h"
 
 static const struct option OPTIONS[] = {
   { "send_intent", required_argument, NULL, 's' },
@@ -157,6 +160,41 @@ check_and_fclose(FILE *fp, const char *name) {
 //   - the contents of COMMAND_FILE (one per line)
 static void
 get_args(int *argc, char ***argv) {
+/* Stripped start - Unused functions for BootMenu
+    struct bootloader_message boot;
+    memset(&boot, 0, sizeof(boot));
+    if (device_flash_type() == MTD || device_flash_type() == MMC) {
+        get_bootloader_message(&boot);  // this may fail, leaving a zeroed structure
+    }
+
+    if (boot.command[0] != 0 && boot.command[0] != 255) {
+        LOGI("Boot command: %.*s\n", sizeof(boot.command), boot.command);
+    }
+
+    if (boot.status[0] != 0 && boot.status[0] != 255) {
+        LOGI("Boot status: %.*s\n", sizeof(boot.status), boot.status);
+    }
+
+    struct stat file_info;
+
+    // --- if arguments weren't supplied, look in the bootloader control block
+    if (*argc <= 1 && 0 != stat("/tmp/.ignorebootmessage", &file_info)) {
+        boot.recovery[sizeof(boot.recovery) - 1] = '\0';  // Ensure termination
+        const char *arg = strtok(boot.recovery, "\n");
+        if (arg != NULL && !strcmp(arg, "recovery")) {
+            *argv = (char **) malloc(sizeof(char *) * MAX_ARGS);
+            (*argv)[0] = strdup(arg);
+            for (*argc = 1; *argc < MAX_ARGS; ++*argc) {
+                if ((arg = strtok(NULL, "\n")) == NULL) break;
+                (*argv)[*argc] = strdup(arg);
+            }
+            LOGI("Got arguments from boot message\n");
+        } else if (boot.recovery[0] != 0 && boot.recovery[0] != 255) {
+            LOGE("Bad boot message\n\"%.20s\"\n", boot.recovery);
+        }
+    }
+
+ Stripped end - Unused functions for BootMenu */
     // --- if that doesn't work, try the command file
     if (*argc <= 1) {
         FILE *fp = fopen_path(COMMAND_FILE, "r");
@@ -175,10 +213,30 @@ get_args(int *argc, char ***argv) {
             LOGI("Got arguments from %s\n", COMMAND_FILE);
         }
     }
+/* Stripped start - Unused functions for BootMenu
+
+    // --> write the arguments we have back into the bootloader control block
+    // always boot into recovery after this (until finish_recovery() is called)
+    strlcpy(boot.command, "boot-recovery", sizeof(boot.command));
+    strlcpy(boot.recovery, "recovery\n", sizeof(boot.recovery));
+    int i;
+    for (i = 1; i < *argc; ++i) {
+        strlcat(boot.recovery, (*argv)[i], sizeof(boot.recovery));
+        strlcat(boot.recovery, "\n", sizeof(boot.recovery));
+    }
+    set_bootloader_message(&boot);
+ Stripped end - Unused functions for BootMenu */
 }
 
 void
 set_sdcard_update_bootloader_message() {
+/* Stripped start - Unused functions for BootMenu
+    struct bootloader_message boot;
+    memset(&boot, 0, sizeof(boot));
+    strlcpy(boot.command, "boot-recovery", sizeof(boot.command));
+    strlcpy(boot.recovery, "recovery\n", sizeof(boot.recovery));
+    set_bootloader_message(&boot);
+ Stripped end - Unused functions for BootMenu */
 }
 
 // How much of the temp log we have copied to the copy in cache.
@@ -233,9 +291,11 @@ finish_recovery(const char *send_intent) {
     chmod(LAST_LOG_FILE, 0640);
 
     // Reset to normal system boot so recovery won't cycle indefinitely.
-    //struct bootloader_message boot;
-    //memset(&boot, 0, sizeof(boot));
-    //set_bootloader_message(&boot);
+/* Stripped start - Unused functions for BootMenu
+    struct bootloader_message boot;
+    memset(&boot, 0, sizeof(boot));
+    set_bootloader_message(&boot);
+ Stripped end - Unused functions for BootMenu */
 
     // Remove the command file, so recovery won't repeat indefinitely.
     if (ensure_path_mounted(COMMAND_FILE) != 0 ||
@@ -258,6 +318,7 @@ erase_volume(const char *volume) {
         // log.
         tmplog_offset = 0;
     }
+
     return format_volume(volume);
 }
 
@@ -576,9 +637,16 @@ update_directory(const char* path, const char* unmount_when_done) {
 static void
 wipe_data(int confirm) {
     if (confirm) {
-        char* headers[] = { "Confirm wipe of all user data?",
-                            "  THIS CAN NOT BE UNDONE.",
-                             NULL };
+        static char** title_headers = NULL;
+
+        if (title_headers == NULL) {
+            char* headers[] = { "Confirm wipe of all user data?",
+                                "  THIS CAN NOT BE UNDONE.",
+                                "",
+                                NULL };
+            title_headers = prepend_title((const char**)headers);
+        }
+
         char* items[] = { " No",
                           " No",
                           " No",
@@ -592,7 +660,7 @@ wipe_data(int confirm) {
                           " No",
                           NULL };
 
-        int chosen_item = get_menu_selection(headers, items, 1, 0);
+        int chosen_item = get_menu_selection(title_headers, items, 1, 0);
         if (chosen_item != 7) {
             return;
         }
@@ -609,74 +677,6 @@ wipe_data(int confirm) {
     ui_print("Data wipe complete.\n");
 }
 
-int show_wipe_options_menu()
-{
-	static char* items[] = { "Wipe data & cache (Factory Reset)",
-                             "Wipe cache",
-                             "Wipe dalvik cache",
-                             "Wipe battery stats",
-                              NULL
-	};
-    static char* headers[] = {  "","Wipe options", NULL };
-    for (;;)
-    {
-		gCurrentIcon = BACKGROUND_ICON_WIPE;
-        int chosen_item = get_menu_selection(headers, items, 0, 0);
-        switch (chosen_item)
-        {
-            case 0:
-                wipe_data(ui_text_visible());
-				ensure_path_mounted("/cache");
-                if (!ui_text_visible()) return 1;
-				return 0;
-            case 1:
-				if (confirm_selection("Confirm wipe?", "Yes - Wipe Cache"))
-                {
-                    ui_print("\n-- Wiping cache...\n");
-                    erase_volume("/cache");
-					ensure_path_mounted("/cache");
-                    ui_print("Cache wipe complete.\n");
-                    if (!ui_text_visible()) return 1;
-                }
-                return 0;
-            case 2:				
-				ensure_path_mounted("/cache");
-				if (0 != ensure_path_mounted("/data"))
-                    break;
-                if (confirm_selection( "Confirm wipe?", "Yes - Wipe Dalvik Cache")) {
-                    __system("rm -r /data/dalvik-cache");
-					__system("rm -r /cache/dalvik-cache");
-                    ui_print("Dalvik Cache wiped.\n");
-                }
-                ensure_path_unmounted("/data");
-				return 0;
-			case 3:
-				wipe_battery_stats();
-				return 0;
-            default:
-				return 0;
-        }
-    }
-}
-
-void check_integrity() {
-	ensure_path_unmounted("/system");
-	ui_print("Checking system integrity.. ");
-   	if (0 != __system("/preinstall/bootmenu/script/check_hijack.sh")) {
-		ui_print("bad! :(\n\n");
-   		ui_print("hijack version mismatched!\n");
-		ui_print("Bootmenu will not run in next boot\n\n");
-		ui_print("If this is a mistake, reinstall via\n");
-		ui_print(" System keeper menu\n");
-		if (!confirm_selection("Confirm reboot?", "Yes - Good Bye BootMenu")) {
-			sprintf(recovery_mode,"%s","second");
-			poweroff = 6;
-		}
-	} else {
-		ui_print("good! :)\n\n");
-	}
-	ensure_path_unmounted("/system");
-}
 
 static void
 prompt_and_wait() {
@@ -758,6 +758,108 @@ print_property(const char *key, const char *name, void *cookie) {
     printf("%s=%s\n", key, name);
 }
 
+int show_wipe_options_menu() {
+	static char* items[] = { "Wipe data & cache (Factory Reset)",
+                             "Wipe cache",
+                             "Wipe dalvik cache",
+                             "Wipe battery stats",
+                              NULL
+	};
+    static char* headers[] = {  "","Wipe options", NULL };
+    for (;;) {
+		gCurrentIcon = BACKGROUND_ICON_WIPE;
+        int chosen_item = get_menu_selection(headers, items, 0, 0);
+        switch (chosen_item) {
+            case 0:
+                wipe_data(ui_text_visible());
+				ensure_path_mounted("/cache");
+                if (!ui_text_visible()) return 1;
+				return 0;
+            case 1:
+				if (confirm_selection("Confirm wipe?", "Yes - Wipe Cache"))
+                {
+                    ui_print("\n-- Wiping cache...\n");
+                    erase_volume("/cache");
+					ensure_path_mounted("/cache");
+                    ui_print("Cache wipe complete.\n");
+                    if (!ui_text_visible()) return 1;
+                }
+                return 0;
+            case 2:				
+				ensure_path_mounted("/cache");
+				if (0 != ensure_path_mounted("/data"))
+                    break;
+                if (confirm_selection( "Confirm wipe?", "Yes - Wipe Dalvik Cache")) {
+                    __system("rm -r /data/dalvik-cache");
+					__system("rm -r /cache/dalvik-cache");
+                    ui_print("Dalvik Cache wiped.\n");
+                }
+                ensure_path_unmounted("/data");
+				return 0;
+			case 3:
+				wipe_battery_stats();
+				return 0;
+            default:
+				return 0;
+        }
+    }
+}
+
+void check_integrity() {
+	ui_show_text(1);
+	ensure_path_mounted("/system");
+	ui_print("Checking system integrity..\n");
+
+	ui_print("root   : ");
+	int ret = 0;
+	struct stat st;
+	if (0 == lstat("/system/bin/su", &st)) {
+        if (S_ISREG(st.st_mode)) {
+            if ((st.st_mode & (S_ISUID | S_ISGID)) != (S_ISUID | S_ISGID)) {
+			    ui_set_background(BACKGROUND_ICON_ERROR);
+			    ret = 1;
+                if (confirm_selection("Root access possibly lost. Fix?", "Yes - Fix root (/system/bin/su)")) {
+                    __system("chmod 6755 /system/bin/su");
+					ret = 0;
+                }
+            }
+        }
+    }
+
+    if (0 == lstat("/system/xbin/su", &st)) {
+        if (S_ISREG(st.st_mode)) {
+            if ((st.st_mode & (S_ISUID | S_ISGID)) != (S_ISUID | S_ISGID)) {
+			    ui_set_background(BACKGROUND_ICON_ERROR);
+			    ret = 1;
+                if (confirm_selection("Root access possibly lost. Fix?", "Yes - Fix root (/system/xbin/su)")) {
+                    __system("chmod 6755 /system/xbin/su");
+					ret = 0;
+                }
+            }
+        }
+    }
+	ensure_path_unmounted("/system");
+	ui_print((ret == 0) ? "good :)\n":"bad! :(\n");
+
+	ui_print("hijack : ");
+   	if (0 != __system("/script/check_hijack.sh")) {
+		ui_set_background(BACKGROUND_ICON_ERROR);
+		ui_print("bad! :(\n\n");
+   		ui_print("hijack version mismatched!\n");
+		ui_print("Bootmenu will not run in next boot\n\n");
+		ui_print("If this is a mistake, reinstall via\n");
+		ui_print(" System keeper menu\n");
+		if (!confirm_selection("Confirm reboot?", "Yes - Good Bye BootMenu")) {
+			sprintf(recovery_mode,"%s","second");
+			poweroff = 6;
+		}
+	} else {
+		ui_print("good! :)\n\n");
+	}
+
+	ensure_path_unmounted("/system");
+}
+
 void configuration(const char* file) {
 	//default value
 	touch_y_sen = 70;
@@ -793,15 +895,37 @@ void configuration(const char* file) {
 		}
 		fclose(fp);
 	}
-	sprintf(RES_LOC,"/preinstall/bootmenu/themes/%s/%%s.png",theme);
+	sprintf(RES_LOC,"/themes/%s/%%s.png",theme);
 	set_led("button-backlight",keypad_light);
 	set_amoled(brightness);
 }
 
+void mode(int argc, char **argv) {
+    if ((argc > 1) && (strstr(argv[1], "second"))) {
+		LOGI("Recovery mode : 2nd system.\n");
+		__system("mount -o rw,remount / ; cp -a /conf/2nd.recovery.fstab /etc/recovery.fstab");
+		MENU_ITEMS[0] = "Toggle stock system recovery";
+		property_set("lense.recovery.mode", "second");
+	} else {
+		LOGI("Recovery mode : 1st system.\n");
+		__system("mount -o rw,remount / ; cp -a /conf/1st.recovery.fstab /etc/recovery.fstab");
+		MENU_ITEMS[0] = "Toggle second system recovery";
+		property_set("lense.recovery.mode", "stock");
+	}
+	
+	property_get("lense.recovery.mode", recovery_mode, "stock");
+}
+
 int
 main(int argc, char **argv) {
+    // Recovery needs to install world-readable files, so clear umask
+    // set by init
+    umask(0);
+
 	if (strcmp(basename(argv[0]), "recovery") != 0)
 	{
+        if (strstr(argv[0], "dedupe") != NULL)
+            return dedupe_main(argc, argv);
 	    if (strstr(argv[0], "volume") != NULL)
 	        return volume_main(argc, argv);
 	    if (strstr(argv[0], "edify") != NULL)
@@ -827,7 +951,7 @@ main(int argc, char **argv) {
 		return busybox_driver(argc, argv);
 	}
 
-	sleep(1);
+	//sleep(1);
 
     int is_user_initiated_recovery = 0;
     time_t start = time(NULL);
@@ -837,28 +961,8 @@ main(int argc, char **argv) {
     freopen(TEMPORARY_LOG_FILE, "a", stderr); setbuf(stderr, NULL);
     printf("Starting recovery on %s", ctime(&start));
 
-	__system("/preinstall/bootmenu/script/recovery_restart.sh");
-
-    if (strstr(argv[1], "second")) {
-		LOGI("Recovery mode : second.\n");
-		__system("cp /preinstall/bootmenu/config/second.recovery.fstab /etc/recovery.fstab");
-		property_set("lense.recovery.mode", "second");
-	} else {
-		LOGI("Recovery mode : mode.\n");
-		__system("/sbin/cp /preinstall/bootmenu/config/stock.recovery.fstab /etc/recovery.fstab");
-		property_set("lense.recovery.mode", "stock");
-	}
-	
-	configuration("/preinstall/bootmenu/config/recovery.prop");
-
-	property_get("lense.recovery.mode", recovery_mode, "stock");
-	if (!strcmp(recovery_mode, "stock")) {
-		MENU_ITEMS[0] = "Toggle second system recovery";
-	} else {
-		MENU_ITEMS[0] = "Toggle stock system recovery";
-	}
-
-    __system("/preinstall/bootmenu/script/recovery_postboot.sh");
+	mode(argc, argv);
+	configuration("/conf/recovery.prop");
 
     device_ui_init(&ui_parameters);
     ui_init();
@@ -883,24 +987,20 @@ main(int argc, char **argv) {
 		ui_set_show_text(0);
 		ui_reset_progress();
 		property_set("sys.usb.config", "mass_storage,adb");
-		__system("/sbin/umount -l /system");
-		__system("/sbin/umount -l /data");
 		set_led("green",0);
 	}
 
-    printf("This recovery is based on CWM-Recovery v5.5.0.4\n");
 	battlevel = cpcap_batt_percent();
 	printf("Battery voltage : %d mv\n", battlevel);
     load_volume_table();
     process_volumes();
+    //LOGI("Processing arguments.\n");
+    //get_args(&argc, &argv);
 
 	if (ensure_path_mounted("/emmc") != 0) {
 		sprintf(def_location, "%s", "/sdcard");
 	}
 	printf("Default file location : %s\n", def_location);
-
-    //LOGI("Processing arguments.\n");
-    //get_args(&argc, &argv);
 
     int previous_runs = 0;
     const char *send_intent = NULL;
@@ -916,9 +1016,9 @@ main(int argc, char **argv) {
         case 'u': update_package = optarg; break;
         case 'w': 
 #ifndef BOARD_RECOVERY_ALWAYS_WIPES
-		wipe_data = wipe_cache = 1;
+        wipe_data = wipe_cache = 1;
 #endif
-		break;
+        break;
         case 'c': wipe_cache = 1; break;
         case 't': ui_show_text(1); break;
         case '?':
@@ -975,7 +1075,6 @@ main(int argc, char **argv) {
         // we are starting up in user initiated recovery here
         // let's set up some default options
         signature_check_enabled = 0;
-        script_assert_enabled = 0;
         is_user_initiated_recovery = 1;
         ui_set_show_text(1);
         ui_set_background(BACKGROUND_ICON_CLOCKWORK);
@@ -1003,17 +1102,17 @@ main(int argc, char **argv) {
         prompt_and_wait();
     }
 
+	if (poweroff != 6) {
+		check_integrity();
+		sleep(2);
+	}
+	
     // If there is a radio image pending, reboot now to install it.
     //maybe_install_firmware_update(send_intent);
 
     // Otherwise, get ready to boot the main system...
     finish_recovery(send_intent);
 
-	if (poweroff != 6) {
-		ui_set_show_text(1);
-		check_integrity();
-		sleep(2);
-	}
     sync();
 	switch (poweroff) {
 		case 0:
@@ -1044,8 +1143,7 @@ main(int argc, char **argv) {
 			break;
 		case 6:
 			ui_print("Restarting recovery..\n");
-			__system("/sbin/umount -l /system");
-			__system("/sbin/umount -l /data");
+			__system("/sbin/umount -l /system ; /sbin/umount -l /data ; /sbin/umount -l /cache ; /sbin/rm -f /etc/fstab ; /sbin/rm -f /etc/mtab ; /sbin/rm -f /etc/recovery.fstab");
 			if (NULL != strstr(recovery_mode, "stock")) {
 				__system("/sbin/recovery second &");
 			} else {

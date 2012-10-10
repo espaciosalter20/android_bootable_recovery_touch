@@ -58,7 +58,7 @@ static int gShowBackButton = 0;
 
 UIParameters ui_parameters = {
     6,       // indeterminate progress bar frames
-    25,      // fps
+    20,      // fps
     7,       // installation icon frames (0 == static image)
     23, 83, // installation icon overlay offset
 };
@@ -174,7 +174,7 @@ static void draw_background_locked(int icon)
 static void draw_progress_locked()
 {
     if (gCurrentIcon == BACKGROUND_ICON_INSTALLING) {
-		gInstallingFrame = (gInstallingFrame + 1) % ui_parameters.installing_frames;
+		//sync CWM6 gInstallingFrame = (gInstallingFrame + 1) % ui_parameters.installing_frames;
         draw_install_overlay_locked(gInstallingFrame);
     }
 
@@ -216,8 +216,10 @@ static void draw_text_line(int row, const char* t, int space) {
   }
 }
 
+#define RED 210, 50, 50, 255
 #define GREEN 85, 170, 56, 255
 #define WHITE 200, 200, 200, 255
+#define WHITE2 150, 150, 150, 200
 #define YELLOW 255, 255, 0, 255
 #define YELLOW2 220, 220, 0, 255
 #define BLACK 0, 0, 0, 255
@@ -229,6 +231,7 @@ static void draw_text_line(int row, const char* t, int space) {
 // Should only be called with gUpdateMutex locked.
 static void draw_screen_locked(void)
 {
+	bool gre = strcmp(recovery_mode, "stock");
 	bool fm = false;
     if (!ui_has_initialized) return;
 
@@ -253,7 +256,7 @@ static void draw_screen_locked(void)
 
 			if (strncasecmp(menu[1], "choose", 6) == 0) { fm = true; }
 			//highlight
-            gr_color(GREEN);
+            (gre) ? gr_color(GREEN) : gr_color(RED);
             gr_fill(0, ((menu_top + menu_sel - menu_show_start) * CHAR_SPACE)+6, gr_fb_width(), ((menu_top + menu_sel - menu_show_start + 1)*CHAR_SPACE+CHAR_HEIGHT)-6);
 
             if (menu_items - menu_show_start + menu_top >= max_menu_rows)
@@ -266,7 +269,7 @@ static void draw_screen_locked(void)
                     gr_color(WHITE);
                     draw_text_line(i - menu_show_start , menu[i],CHAR_SPACE);
                 } else {
-                    gr_color(GREEN);
+                    (gre) ? gr_color(GREEN) : gr_color(RED);
                     draw_text_line(i - menu_show_start, menu[i],CHAR_SPACE);
                 }
 				if (fm == true) {
@@ -298,12 +301,12 @@ static void draw_screen_locked(void)
                 offset = 1;
 
 			//Hline
-			gr_color(GREEN);
+			(gre) ? gr_color(GREEN) : gr_color(RED);
 			gr_fill(0, (menu_top*CHAR_SPACE)+4, gr_fb_width(), (menu_top*CHAR_SPACE)+6);
             gr_fill(0, (row/2-offset)*CHAR_SPACE+CHAR_HEIGHT-6, gr_fb_width(), (row/2-offset)*CHAR_SPACE+CHAR_HEIGHT-4);
         }
 
-        gr_color(WHITE);
+        gr_color(WHITE2);
         int cur_row = text_row;
         int available_rows = total_rows - row - 1;
         int start_row = row + 1;
@@ -723,6 +726,26 @@ void ui_reset_progress()
     pthread_mutex_unlock(&gUpdateMutex);
 }
 
+static long delta_milliseconds(struct timeval from, struct timeval to) {
+    long delta_sec = (to.tv_sec - from.tv_sec)*1000;
+    long delta_usec = (to.tv_usec - from.tv_usec)/1000;
+    return (delta_sec + delta_usec);
+}
+
+static struct timeval lastupdate = (struct timeval) {0};
+static int ui_nice = 0;
+static int ui_niced = 0;
+void ui_set_nice(int enabled) {
+    ui_nice = enabled;
+}
+#define NICE_INTERVAL 100
+int ui_was_niced() {
+    return ui_niced;
+}
+int ui_get_text_cols() {
+    return text_cols;
+}
+
 void ui_print(const char *fmt, ...)
 {
     char buf[256];
@@ -734,8 +757,22 @@ void ui_print(const char *fmt, ...)
     if (ui_log_stdout)
         fputs(buf, stdout);
 
+    // if we are running 'ui nice' mode, we do not want to force a screen update
+    // for this line if not necessary.
+    ui_niced = 0;
+    if (ui_nice) {
+        struct timeval curtime;
+        gettimeofday(&curtime, NULL);
+        long ms = delta_milliseconds(lastupdate, curtime);
+        if (ms < NICE_INTERVAL && ms >= 0) {
+            ui_niced = 1;
+            return;
+        }
+    }
+
     // This can get called before ui_init(), so be careful.
     pthread_mutex_lock(&gUpdateMutex);
+    gettimeofday(&lastupdate, NULL);
     if (text_rows > 0 && text_cols > 0) {
         char *ptr;
         for (ptr = buf; *ptr != '\0'; ++ptr) {
@@ -773,22 +810,6 @@ void ui_printlogtail(int nb_lines) {
         fclose(f);
     }
     ui_log_stdout=1;
-}
-
-void ui_reset_text() {
-    pthread_mutex_lock(&gUpdateMutex);
-	text_row = 0;
-    text_col = 0;
-	text_top = 0;
-	update_screen_locked();
-    pthread_mutex_unlock(&gUpdateMutex);
-}
-
-void ui_reset_text_col()
-{
-    pthread_mutex_lock(&gUpdateMutex);
-    text_col = 0;
-    pthread_mutex_unlock(&gUpdateMutex);
 }
 
 #define MENU_ITEM_HEADER " - "
@@ -968,6 +989,27 @@ int ui_get_showing_back_button() {
     return gShowBackButton;
 }
 
+void ui_delete_line() {
+    pthread_mutex_lock(&gUpdateMutex);
+    text[text_row][0] = '\0';
+    text_row = (text_row - 1 + text_rows) % text_rows;
+    text_col = 0;
+    pthread_mutex_unlock(&gUpdateMutex);
+}
+
+void ui_increment_frame() {
+    gInstallingFrame =
+        (gInstallingFrame + 1) % ui_parameters.installing_frames;
+}
+
+void ui_reset_text() {
+    pthread_mutex_lock(&gUpdateMutex);
+	text_row = 0;
+    text_col = 0;
+	text_top = 0;
+	update_screen_locked();
+    pthread_mutex_unlock(&gUpdateMutex);
+}
 
 /*
  * codes from batt_cpcap.c tpruvot@CyanogenDefy/android_external_bootmenu

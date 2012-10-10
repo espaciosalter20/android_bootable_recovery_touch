@@ -219,21 +219,24 @@ int show_power_options_menu()
     }
 }
 
-int signature_check_enabled = 1;
-int script_assert_enabled = 1;
+int signature_check_enabled = 0;
 static const char *SDCARD_UPDATE_FILE = "/sdcard/update.zip";
+
+void write_string_to_file(const char* filename, const char* string) {
+    ensure_path_mounted(filename);
+    char tmp[PATH_MAX];
+    sprintf(tmp, "mkdir -p $(dirname %s)", filename);
+    __system(tmp);
+    FILE *file = fopen(filename, "w");
+    fprintf(file, "%s", string);
+    fclose(file);
+}
 
 void
 toggle_signature_check()
 {
     signature_check_enabled = !signature_check_enabled;
     ui_print("Signature Check: %s\n", signature_check_enabled ? "Enabled" : "Disabled");
-}
-
-void toggle_script_asserts()
-{
-    script_assert_enabled = !script_assert_enabled;
-    ui_print("Script Asserts: %s\n", script_assert_enabled ? "Enabled" : "Disabled");
 }
 
 /// v 0.2.7
@@ -337,7 +340,6 @@ int install_zip(const char* packagefilepath)
 char* INSTALL_MENU_ITEMS[] = {  "Install a zip package",
                                 "Apply an update.zip",
                                 "Toggle signature verification",
-                                "Toggle script asserts",
                                 "Change zip file location",
                                 NULL };
 
@@ -366,10 +368,7 @@ void show_install_update_menu()
             case 2:
                 toggle_signature_check();
                 break;
-            case 3:
-                toggle_script_asserts();
-                break;
-			case 4:
+			case 3:
 				show_path_chooser(1,location,title);
 				break;
             default:
@@ -506,6 +505,20 @@ char* choose_file_menu(const char* directory, const char* fileExtensionOrDirecto
     char* return_value = NULL;
     int dir_len = strlen(directory);
 
+    i = 0;
+    while (headers[i]) {
+        i++;
+    }
+    const char** fixed_headers = (const char*)malloc((i + 3) * sizeof(char*));
+    i = 0;
+    while (headers[i]) {
+        fixed_headers[i] = headers[i];
+        i++;
+    }
+    fixed_headers[i] = directory;
+    fixed_headers[i + 1] = "";
+    fixed_headers[i + 2 ] = NULL;
+
     char** files = gather_files(directory, fileExtensionOrDirectory, &numFiles);
     char** dirs = NULL;
     if (fileExtensionOrDirectory != NULL)
@@ -533,7 +546,7 @@ char* choose_file_menu(const char* directory, const char* fileExtensionOrDirecto
 
         for (;;)
         {
-            int chosen_item = get_menu_selection(headers, list, 0, 0);
+            int chosen_item = get_menu_selection(fixed_headers, list, 0, 0);
             if (chosen_item == GO_BACK)
                 break;
             static char ret[PATH_MAX];
@@ -557,6 +570,7 @@ char* choose_file_menu(const char* directory, const char* fileExtensionOrDirecto
 
     free_string_array(files);
     free_string_array(dirs);
+    free(fixed_headers);
     return return_value;
 }
 
@@ -605,6 +619,31 @@ void show_nandroid_restore_menu(const char* path)
 			nandroid_restore(file, 1, 1, 1, 1, 0, 1);
 		}
 	}
+}
+
+void show_nandroid_delete_menu(const char* path)
+{
+    if (ensure_path_mounted(path) != 0) {
+        LOGE("Can't mount %s\n", path);
+        return;
+    }
+
+    static char* headers[] = {  "Choose an image to delete",
+                                "",
+                                NULL
+    };
+
+    char tmp[PATH_MAX];
+    sprintf(tmp, "%s/clockworkmod/backup/", path);
+    char* file = choose_file_menu(tmp, NULL, headers);
+    if (file == NULL)
+        return;
+
+    if (confirm_selection("Confirm delete?", "Yes - Delete")) {
+        // nandroid_restore(file, 1, 1, 1, 1, 1, 0);
+        sprintf(tmp, "rm -rf %s", file);
+        __system(tmp);
+    }
 }
 
 //#ifndef BOARD_UMS_LUNFILE
@@ -874,7 +913,6 @@ int format_unknown_device(const char *device, const char* path, const char *fs_t
     }
 
 	if (strcmp(path, "/cache") == 0) return 0;
-	if (strcmp(path, "/preinstall") == 0) return 0;
 
    	ensure_path_unmounted(path);
     return 0;
@@ -1183,6 +1221,36 @@ void get_title(int zip, const char* location, const char* title) {
 		sprintf(title, "File location : Micro SD");
 	}
 }
+//TODO BM
+static void run_dedupe_gc(const char* other_sd) {
+    ensure_path_mounted(other_sd);
+    char tmp[PATH_MAX];
+    sprintf(tmp, "%s/clockworkmod/blobs", other_sd);
+    nandroid_dedupe_gc(tmp);
+}
+
+static void choose_backup_format() {
+    static char* headers[] = {  "Backup Format",
+                                "",
+                                NULL
+    };
+
+    char* list[] = { "dup (default)",
+        "tar"
+    };
+
+    int chosen_item = get_menu_selection(headers, list, 0, 0);
+    switch (chosen_item) {
+        case 0:
+            write_string_to_file(NANDROID_BACKUP_FORMAT_FILE, "dup");
+            ui_print("Backup format set to dedupe.\n");
+            break;
+        case 1:
+            write_string_to_file(NANDROID_BACKUP_FORMAT_FILE, "tar");
+            ui_print("Backup format set to tar.\n");
+            break;
+    }
+}
 
 void show_nandroid_menu()
 {
@@ -1191,7 +1259,10 @@ void show_nandroid_menu()
                             "Selective backup",
                             "Restore",
                             "Selective restore",
-                            "Change backup location",
+                            "Choose backup location",
+                            "Choose backup format",
+                            "Delete backup files",
+                            "Clean unused dedupe blob", //Free unused backup data
                             NULL
     };
 	static char* titles[] = {"","Nandroid backup & restore", "", "internal storage",NULL};
@@ -1235,6 +1306,15 @@ void show_nandroid_menu()
 				break;
         	case 5:
 				show_path_chooser(0,location,title);
+        	    break;
+        	case 6:
+				choose_backup_format();
+        	    break;
+        	case 7:
+				show_nandroid_delete_menu(location);
+        	    break;
+        	case 8:
+				run_dedupe_gc(location);
         	    break;
             default:
 				return;
@@ -1587,14 +1667,14 @@ void process_volumes() {
     nandroid_restore(backup_path, 1, 1, 1, 1, 1, 0);
     ui_set_show_text(0);*/
 }
-
+//TODO:BM
 void handle_failure(int ret)
 {
     if (ret == 0)
         return;
     if (0 != ensure_path_mounted("/emmc"))
         return;
-    mkdir("/sdcard/clockworkmod", S_IRWXU);
+    mkdir("/sdcard/clockworkmod", S_IRWXU | S_IRWXG | S_IRWXO);
     __system("cp /tmp/recovery.log /emmc/clockworkmod/recovery.log");
     ui_print("/tmp/recovery.log was copied to /emmc/clockworkmod/recovery.log.\n");
 }

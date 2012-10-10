@@ -1,9 +1,8 @@
 LOCAL_PATH := $(call my-dir)
 include $(CLEAR_VARS)
-LOCAL_MODULE_PATH := $(EXECUTABLES)/binary
+LOCAL_MODULE_PATH := $(EXECUTABLES)
 commands_recovery_local_path := $(LOCAL_PATH)
 # LOCAL_CPP_EXTENSION := .c
-#    ../../system/core/toolbox/reboot.c \
 
 LOCAL_SRC_FILES := \
     recovery.c \
@@ -12,8 +11,8 @@ LOCAL_SRC_FILES := \
     ui.c \
     mounts.c \
     extendedcommands.c \
-    ../../system/core/toolbox/reboot.c \
     nandroid.c \
+    ../../system/core/toolbox/reboot.c \
     edifyscripting.c \
     setprop.c \
     default_recovery_ui.c \
@@ -30,10 +29,10 @@ ifdef I_AM_KOUSH
 RECOVERY_NAME := ClockworkMod Recovery
 LOCAL_CFLAGS += -DI_AM_KOUSH
 else
-RECOVERY_NAME := Project Lense Recovery  
+RECOVERY_NAME := CWM Recovery
 endif
 
-RECOVERY_VERSION := $(RECOVERY_NAME) $(VERSION)
+RECOVERY_VERSION := $(RECOVERY_NAME) v6.0.1.2 for BMM $(VERSION) 
 LOCAL_CFLAGS += -DMY_VERSION="$(VERSION)"
 LOCAL_CFLAGS += -DRECOVERY_VERSION="$(RECOVERY_VERSION)"
 RECOVERY_API_VERSION := 2
@@ -80,7 +79,7 @@ LOCAL_STATIC_LIBRARIES += libminzip libunz libmincrypt
 
 LOCAL_STATIC_LIBRARIES += libedify libbusybox
 
-LOCAL_STATIC_LIBRARIES += libcrecovery libmmcutils
+LOCAL_STATIC_LIBRARIES += libdedupe libcrypto libcrecovery libmmcutils
 
 #ifeq ($(BOARD_USES_BML_OVER_MTD),true)
 #LOCAL_STATIC_LIBRARIES += libbml_over_mtd
@@ -94,7 +93,7 @@ LOCAL_STATIC_LIBRARIES += libstdc++ libc
 
 include $(BUILD_EXECUTABLE)
 
-RECOVERY_LINKS := edify busybox flash_image dump_image mkyaffs2image unyaffs erase_image nandroid reboot volume setprop getprop
+RECOVERY_LINKS := edify busybox flash_image dump_image mkyaffs2image unyaffs erase_image nandroid reboot volume setprop getprop dedupe
 
 # nc is provided by external/netcat
 RECOVERY_SYMLINKS := $(addprefix $(TARGET_RECOVERY_ROOT_OUT)/sbin/,$(RECOVERY_LINKS))
@@ -152,6 +151,7 @@ include $(BUILD_EXECUTABLE)
 
 #include $(commands_recovery_local_path)/bmlutils/Android.mk
 #include $(commands_recovery_local_path)/flashutils/Android.mk
+include $(commands_recovery_local_path)/dedupe/Android.mk
 include $(commands_recovery_local_path)/libcrecovery/Android.mk
 include $(commands_recovery_local_path)/minui/Android.mk
 include $(commands_recovery_local_path)/minelf/Android.mk
