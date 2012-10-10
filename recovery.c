@@ -867,7 +867,6 @@ void configuration(const char* file) {
 	touch_select = 0;
 	int brightness = 100;
 	int keypad_light = 1;
-	char theme[40] = "default";
 	sprintf(def_location, "%s", "/emmc");
 
 	FILE* fp = fopen(file, "r");
@@ -888,14 +887,11 @@ void configuration(const char* file) {
 					touch_x_sen = atoi(value);
 				} else if(!strcmp(item, "touch_y")) {
 					touch_y_sen = atoi(value);
-				} else if(!strcmp(item, "theme")) {
-					strncpy(theme, value, 39);
 				}
 			}
 		}
 		fclose(fp);
 	}
-	sprintf(RES_LOC,"/themes/%s/%%s.png",theme);
 	set_led("button-backlight",keypad_light);
 	set_amoled(brightness);
 }
